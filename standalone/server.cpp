@@ -16,16 +16,18 @@ int main(int argc, char* argv[])
     h1->FillRandom("gaus", 1000);
     std::cout << h1->GetMean() << std::endl;
 
-    TBufferFile buf(TBuffer::kWrite);
-    buf.Reset();
-    if (buf.WriteObjectAny(h1, h1->Class()) != 1) {
+    TBufferFile bf(TBuffer::kWrite);
+    bf.Reset();
+    if (bf.WriteObjectAny(h1, h1->Class()) != 1) {
         std::cout << "oh noes!" << std::endl;
 	return 1;
     }
 
-    zmq::message_t message((void*)(&buf), sizeof(buf), 0, 0);
+    char* buf = bf.Buffer();
+    int bufsize = bf.BufferSize();
+    zmq::message_t message((void*)buf, bufsize, 0, 0);
     publisher.send(message);
-    std::cout << "sent " << sizeof(buf) << " bytes" << std::endl;
+    std::cout << "sent " << bufsize << " bytes" << std::endl;
 
     return 0;
 }
