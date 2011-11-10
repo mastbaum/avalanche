@@ -1,0 +1,1 @@
+g++ AvalancheServer.cpp -o AvalancheServer.so -lzmq -I/home/mastbaum/sw/root/5.26.00b/include -L/home/mastbaum/sw/root/5.26.00b/lib -lCore -lCint -lRIO -lNet -lHist -lGraf -lGraf3d -lGpad -lTree -lRint -lPostscript -lMatrix -lPhysics -lMathCore -lThread -pthread -lm -ldl -rdynamic -fPIC -shared

@@ -9,6 +9,7 @@
 
 int main(int argc, char *argv[])
 {
+    // make a zeromq socket
     zmq::context_t context(1);
     zmq::socket_t subscriber(context, ZMQ_SUB);
     subscriber.setsockopt(ZMQ_SUBSCRIBE, "", 0); //filter, strlen (filter));
@@ -16,10 +17,13 @@ int main(int argc, char *argv[])
     int count=0;
 
     while (1) {
+        // listen for incoming messages
         zmq::message_t message;
         subscriber.recv(&message);
 	std::cout << count << " ";
 	count++;
+
+	// read message data into a TBufferFile and deserialize
         TBufferFile buf(TBuffer::kRead, message.size(), message.data(), false);
 	TH1F* h1 = (TH1F*)(buf.ReadObjectAny(TH1F::Class()));
 	if (h1)
