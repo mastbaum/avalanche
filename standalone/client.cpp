@@ -1,4 +1,5 @@
 #include <zmq.hpp>
+#include <time.h>
 #include <iostream>
 #include <TH1F.h>
 #include <TBuffer.h>
@@ -9,21 +10,23 @@
 int main(int argc, char *argv[])
 {
     zmq::context_t context(1);
-    zmq::socket_t subscriber(context, ZMQ_PULL);
-    subscriber.bind("tcp://*:5556");
+    zmq::socket_t subscriber(context, ZMQ_SUB);
+    subscriber.setsockopt(ZMQ_SUBSCRIBE, "", 0); //filter, strlen (filter));
+    subscriber.bind("tcp://*:5024");
+    int count=0;
 
-    zmq::message_t message;
-    if (subscriber.recv(&message)) {
-        std::cout << "received " << message.size() << " bytes" << std::endl;
+    while (1) {
+        zmq::message_t message;
+        subscriber.recv(&message);
+	std::cout << count << " ";
+	count++;
         TBufferFile buf(TBuffer::kRead, message.size(), message.data(), false);
 	TH1F* h1 = (TH1F*)(buf.ReadObjectAny(TH1F::Class()));
 	if (h1)
 	    std::cout << h1->GetMean() << std::endl;
 	else
 	   std::cout << "sadness\n";
-    }
-    else {
-	std::cout << "boo hoo\n";
+	delete h1;
     }
 
     return 0;
