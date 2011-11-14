@@ -29,6 +29,13 @@ The avalanche server broadcasts {\tt PackedRec} objects, serialized using a ROOT
 \section{Dispatching Simulated RAT Events}
 {\tt avalanche} includes a RAT output processor which broadcasts packed events on ZeroMQ socket. Clients may thus listen to a RAT-simulated data stream for testing and development. The processor, DispatchEvents, is provided in the {\tt rat} subfolder of the avalanche distribution.
 
+To call the processor from a macro, use e.g.:
+\begin{verbatim}
+/rat/proc dispatch
+/rat/procset address "tcp://localhost:5024"
+\end{verbatim}
+where localhost is the server hostname and 5024 is the server port.
+
 \section{Dispatching Detector Events}
 A C++ library with a very simple API is provided in the {\tt lib} subfolder.
 

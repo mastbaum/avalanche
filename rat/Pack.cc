@@ -164,21 +164,21 @@ DS::PackedRec* Pack::PackEvent(DS::Root *ds, int iev)
   Log::Assert(BitManip::CheckLength(trigError, 15), "Pack: TrigError has wrong length");
 
   // Pack header words
-  int clock50part1 = (int) BitManip::GetBits((ULong64_t) clockCount50, 0, 11);
-  int clock50part2 = (int) BitManip::GetBits((ULong64_t) clockCount50, 11, 32);
-  int clock10part1 = (int) BitManip::GetBits((ULong64_t) clockCount10, 0, 32);
-  int clock10part2 = (int) BitManip::GetBits((ULong64_t) clockCount10, 32, 21);
+  unsigned clock50part1 = (int) BitManip::GetBits((ULong64_t) clockCount50, 0, 11);
+  unsigned clock50part2 = (int) BitManip::GetBits((ULong64_t) clockCount50, 11, 32);
+  unsigned clock10part1 = (int) BitManip::GetBits((ULong64_t) clockCount10, 0, 32);
+  unsigned clock10part2 = (int) BitManip::GetBits((ULong64_t) clockCount10, 32, 21);
 
   Log::Assert(BitManip::CheckLength(clock50part1, 11), "Pack: clock50part1 has wrong length");
   Log::Assert(BitManip::CheckLength(clock50part2, 32), "Pack: clock50part2 has wrong length");
   Log::Assert(BitManip::CheckLength(clock10part1, 32), "Pack: clock10part1 has wrong length");
   Log::Assert(BitManip::CheckLength(clock10part2, 21), "Pack: clock10part2 has wrong length");
-  
-  unsigned long p1 = (unsigned long) clock10part1;
-  unsigned long p2 = (unsigned long) clock10part2;
+ 
+  unsigned long p1 = clock10part1;
+  unsigned long p2 = clock10part2;
   unsigned long test10 = (p2<<32) + p1;
   if (test10 != clockCount10)
-    warn << "Pack: test10 != clockCount10" << newline;
+    warn << dformat("Pack: test10 (%lu) != clockCount10 (%lu)\n", test10, clockCount10);
   
   header[0] = clock10part1; // 32 bits of 10MHz clock
   header[1] = clock10part2; // 21 bits of ""
