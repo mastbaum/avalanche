@@ -1,0 +1,269 @@
+\documentclass{article}
+\usepackage[top=1in,left=1in,right=1in,bottom=1in]{geometry}
+\usepackage{hyperref}
+\title{Avalanche: An Event Dispatcher for SNO+\\{\it \small (as in, a lot of sno(+), very fast)}}
+\author{Andy Mastbaum\footnote{\href{mailto:mastbaum@hep.upenn.edu}{mastbaum@hep.upenn.edu}}\\\small{\it The University of Pennsylvania}}
+\begin{document}
+\maketitle
+\section{Introduction}
+The ``dispatcher'' is the server software responsible for providing a stream of built events to various client software. Currently-planned client software includes the event viewer and detector monitoring tools. The dispatcher requires:
+
+\begin{description}
+\item[High Throughput] The dispatcher must be able to keep up with the maximum data rate of 450 Mbps, simultaneously to all clients.
+\item[Scalability] The dispatcher should support a large number of concurrent client connections without impact on performance.
+\item[Compatibility] The dispatched data stream must be reasonably language-agnostic, since the language of the client software is unknown.
+\end{description}
+
+An obvious platform choice would be ROOT's network I/O classes (TPSocket, etc.). However, the next-generation socket library ZeroMQ\footnote{\href{http://www.zeromq.org}{http://www.zeromq.org}} provides a superior alternative. ZeroMQ is naturally asynchronous, natively supports fan-out, and implementations are typically faster than UNIX sockets. ZeroMQ's fan-out allows clients to ``subscribe'' to a stream, optionally applying a filter (e.g. only events, no run headers). Bindings exist for all major languages.
+
+\section{Data Format}
+It has been decided that the ``packed'' events coming from the event builder will be in a ROOT format, with a structure developed by G. D. Orebi Gann and J. Kaspar. The packed format preserves the ``raw'' data structures from the detector front-end: for example, charge and time data is stored in 96-bit PMT bundles. This is in contrast the `full' or `unpacked' data structure used in RAT, where values are broken into separate, histogrammable fields.
+
+The packed data is essentially a stream of TObjects, which may be event data, event-level headers, or run-level headers. For convenience of storage these are written to a {\tt TTree}. Since {\tt TTree}s are homogeneous lists, various data types must inherit from the same generic superclass to be stored in the tree. The data type must also be stored, so that objects can be properly re-cast when read back. The packed format {\tt TTree} stores {\tt RAT::DS::PackedRec} objects, which in turn contain a single {\tt GenericRec} and an integer {\tt RecordType}. All data types (events, headers) inherit from a class {\tt GenericRec}, which is empty and exists only to support this polymorphism.
+
+A full listing of packed format classes and their members is given in the appendix.
+
+\section{Network Layer}
+The avalanche server broadcasts {\tt PackedRec} objects, serialized using a ROOT {\tt TBufferFile}. Client software must create a {\tt TBufferFile} using the packet data, read the {\tt PackedRec} object out of it, and cast the {\tt PackedRec}'s {\tt Rec} object to the correct type based on the value of {\tt RecordType}. Examples in C++ and Python are included.
+
+\section{Dispatching Simulated RAT Events}
+{\tt avalanche} includes a RAT output processor which broadcasts packed events on ZeroMQ socket. Clients may thus listen to a RAT-simulated data stream for testing and development. The processor, DispatchEvents, is provided in the {\tt rat} subfolder of the avalanche distribution.
+
+\section{Dispatching Detector Events}
+A C++ library with a very simple API is provided in the {\tt lib} subfolder.
+
+A server consists of a single {\tt AvalancheServer} object, constructed with a given socket address. The {\tt AvalancheServer} has one method, {\tt sendObject}, which dispatches a ROOT {\tt TObject}. For example, to send a histogram {\tt TH1F* h1}:
+
+\begin{verbatim}
+ AvalancheServer* serv = new AvalancheServer("tcp://localhost:5024");
+ serv->sendObject(h1);
+\end{verbatim}
+
+Any number of clients may be subscribed to the stream on port 5024.
+
+%\subsection{Processing Dispatched Events}
+%{\tt avalanche} includes a RAT input producer, so that events can be read from the dispatcher stream directly into RAT for processing. This could potentially be used to do online processing with a RAT cluster.
+
+\section{Writing Dispatcher Clients}
+Client software subscribes to a ZeroMQ TCP socket and deserializes ROOT {\tt TObjects}. The former is achieved with the ZeroMQ API, available in all major languages (and many minor ones). The latter imposes some language restrictions, as ROOT bindings exist for a limited number. C++, Python (PyROOT), and Ruby (RubyROOT) are the best-supported choices.
+\subsection{C++}
+In C++, ZeroMQ sockets are handled by the {\tt zmq} library, and deserialization with normal ROOT classes.
+
+Consider the following example (available in {\tt examples/client\_cpp}):
+
+\begin{verbatim}
+#include <zmq.hpp>
+#include <time.h>
+#include <iostream>
+
+#include <RAT/DS/Root.hh>
+#include <RAT/DS/PackedEvent.hh>
+#include <TBuffer.h>
+#include <TBufferFile.h>
+
+int main(int argc, char *argv[])
+{
+    // make a zeromq socket
+    zmq::context_t context(1);
+    zmq::socket_t subscriber(context, ZMQ_SUB);
+    subscriber.setsockopt(ZMQ_SUBSCRIBE, "", 0); //filter, strlen (filter));
+    subscriber.bind("tcp://*:5024");
+
+    while (1) {
+        // listen for incoming messages
+        zmq::message_t message;
+        subscriber.recv(&message);
+
+        // read message data into a TBufferFile and deserialize
+        TBufferFile buf(TBuffer::kRead, message.size(), message.data(), false);
+        RAT::DS::PackedRec* rec = \
+          (RAT::DS::PackedRec*)(buf.ReadObjectAny(RAT::DS::PackedRec::Class()));
+        if (rec)
+            std::cout << "Received PackedRec of type " << rec->RecordType << std::endl;
+        else
+            std::cout << "Error deserializing message data" << std::endl;
+        delete rec;
+    }
+
+    return 0;
+}
+\end{verbatim}
+
+First, we set up a ZMQ socket to subscribe to a server. Then, we wait to receive packets. Packet data comes as {\tt zmq::message\_t} objects, which have an {\tt int zmq::message\_t::size()} and a {\tt void* zmq::message\_t::data()}. Using the size and data to construct a {\tt TBufferFile}, we may read out the deserialized {\tt PackedRec} with {\tt TBufferFile::ReadObject} or {\tt TBufferFile::ReadObjectAny}.
+
+In this example, we just print the record type. A real client would at this point cast the member {\tt Rec} object to the correct type, extract data, and perform some operations.
+
+\subsection{Python}
+In Python, ZeroMQ sockets are handled by the zmq module, available from github (\href{http://github.com/zeromq/pyzmq}{zeromq/pyzmq}) or via {\tt easy\_install}. Deserialization is done with ROOT classes accessed through PyROOT.
+
+Consider the following example (available in {\tt examples/client\_python}):
+
+\begin{verbatim}
+import sys
+import array
+import zmq
+from rat import ROOT
+
+if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        address = sys.argv[1]
+    else:
+        address = 'tcp://*:5024'
+
+    # set up zeromq socket
+    context = zmq.Context()
+    socket = context.socket(zmq.SUB)
+    socket.setsockopt(zmq.SUBSCRIBE, '')
+    socket.bind(address)
+
+    while True:
+        msg = socket.recv(copy=False)
+        # buffer contains null characters, so wrap in array to pass to c
+        b = array.array('c', msg.bytes)
+        buf = ROOT.TBufferFile(ROOT.TBuffer.kRead, len(b), b, False, 0)
+        rec = buf.ReadObject(ROOT.RAT.DS.PackedRec.Class())
+
+        if rec:
+            print 'Received PackedRec of type', rec.RecordType
+        else:
+            print 'Error deserializing message data'
+\end{verbatim}
+
+First, we set up a ZMQ socket to subscribe to a server. Then, we wait to receive packets. With {\tt copy=False} in {\tt recv()}, packet data comes as {\tt zmq.core.message.Message} objects, which have a {\tt buffer} (buffer) and a {\tt bytes} (str) object.
+
+To convert unterminated Python strings to null-terminated C strings, the Python/C interface reads a string only until it hits the first zero byte. To work around this, the buffer's byte array must be stored in a character {\tt array.array} as shown. PyROOT correctly casts the {\tt array} to a void pointer for the {\tt TBufferFile} constructor.
+
+Using the length of the character array and array itself to construct a {\tt TBufferFile}, we may read out the deserialized {\tt PackedRec} with {\tt TBufferFile::ReadObject} or {\tt TBufferFile::ReadObjectAny}.
+
+In this example, we just print the record type. A real client would at this point cast the member {\tt Rec} object to the correct type, extract data, and perform some operations.
+
+\subsection{Other Languages}
+Many other languages are supported by ZeroMQ, and at least Ruby has supported ROOT bindings. Implementations will be similar to those given in C++ and Python. For examples of ZeroMQ in your language, see \href{https://github.com/imatix/zguide/tree/master/examples}{https://github.com/imatix/zguide/tree/master/examples}.
+
+\clearpage
+\section{Appendix: Packed Data Model}
+This is a complete listing of all packed format classes, taken from RAT's PackedEvent.hh.
+
+\subsection{class GenericRec : public TObject}
+(empty)
+
+\subsection{class PackedRec : public TObject}
+\begin{itemize}
+\item UInt\_t RecordType
+\item GenericRec *Rec
+\end{itemize}
+
+\subsubsection{Record Types}
+\begin{enumerate}
+\setcounter{enumi}{-1}
+\item Empty
+\item Detector event
+\item RHDR
+\item CAAC
+\item CAST
+\item TRIG
+\item EPED
+\end{enumerate}
+
+\subsection{class PackedEvent : public GenericRec}
+\begin{itemize}
+\item UInt\_t MTCInfo[kNheaders] (6 words for the event header from the MTC)
+\item UInt\_t RunID
+\item UInt\_t SubRunID
+\item UInt\_t NHits
+\item UInt\_t EVOrder
+\item ULong64\_t RunMask
+\item char PackVer
+\item char MCFlag
+\item char DataType
+\item char ClockStat10 
+\item std::vector$<$PMTBundle$>$ PMTBundles
+\end{itemize}
+
+\subsection{class PMTBundle}
+\begin{itemize}
+\item UInt\_t Word[3] 
+\end{itemize}
+
+\subsection{class EPED : public GenericRec}
+\begin{itemize}
+\item UInt\_t GTDelayCoarse
+\item UInt\_t GTDelayFine
+\item UInt\_t QPedAmp
+\item UInt\_t QPedWidth
+\item UInt\_t PatternID
+\item UInt\_t CalType
+\item UInt\_t EventID (GTID of first events in this bank validity)
+\item UInt\_t RunID (doublecheck on the run)
+\end{itemize}
+
+\subsection{class TRIG : public GenericRec}
+\begin{itemize}
+\item UInt\_t TrigMask
+\item UShort\_t Threshold[10]
+\item UShort\_t TrigZeroOffset[10]
+\item UInt\_t PulserRate
+\item UInt\_t MTC\_CSR
+\item UInt\_t LockoutWidth
+\item UInt\_t PrescaleFreq
+\item UInt\_t EventID (GTID of first events in this banks validity)
+\item UInt\_t RunID (doublecheck on the run)
+\end{itemize}
+
+\subsubsection{Array Indices}
+Arrays correspond to:
+\begin{enumerate}
+\setcounter{enumi}{-1}
+\item N100Lo
+\item N100Med
+\item N100Hi
+\item N20
+\item N20LB
+\item ESUMLo
+\item ESUMHi
+\item OWLn
+\item OWLELo
+\item OWLEHi
+\end{enumerate}
+
+\subsection{class RHDR : public GenericRec}
+\begin{itemize}
+\item UInt\_t Date
+\item UInt\_t Time
+\item char DAQVer
+\item UInt\_t CalibTrialID
+\item UInt\_t SrcMask
+\item UInt\_t RunMask
+\item UInt\_t CrateMask
+\item UInt\_t FirstEventID
+\item UInt\_t ValidEventID
+\item UInt\_t RunID (doublecheck on the run)
+\end{itemize}
+
+\subsection{class CAST : public GenericRec}
+\begin{itemize}
+\item UShort\_t SourceID
+\item UShort\_t SourceStat
+\item UShort\_t NRopes
+\item float ManipPos[3]
+\item float ManipDest[3]
+\item float SrcPosUncert1
+\item float SrcPosUncert2[3]
+\item float LBallOrient
+\item std::vector$<$int$>$ RopeID
+\item std::vector$<$float$>$ RopeLen
+\item std::vector$<$float$>$ RopeTargLen
+\item std::vector$<$float$>$ RopeVel
+\item std::vector$<$float$>$ RopeTens
+\item std::vector$<$float$>$ RopeErr
+\end{itemize}
+
+\subsection{class CAAC : public GenericRec}
+\begin{itemize}
+\item float AVPos[3]
+\item float AVRoll[3] (roll, pitch and yaw)
+\item float AVRopeLength[7]
+\end{itemize}
+
+\end{document}
+
