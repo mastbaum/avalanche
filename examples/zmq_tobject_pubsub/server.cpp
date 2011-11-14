@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
     h1->FillRandom("gaus", 10);
     std::cout << h1->GetMean() << std::endl;
 
-    for (int i=0; i<100; i++) {
+    for (int i=0; i<10; i++) {
         // serialize TH1F with a TBufferFile
         TBufferFile bf(TBuffer::kWrite);
         bf.Reset();

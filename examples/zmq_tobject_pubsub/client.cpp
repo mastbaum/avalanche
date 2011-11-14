@@ -25,6 +25,17 @@ int main(int argc, char *argv[])
 
 	// read message data into a TBufferFile and deserialize
         TBufferFile buf(TBuffer::kRead, message.size(), message.data(), false);
+	char* m = (char*) message.data();
+        int hashe = m[0];
+	int hasho = m[1];
+        for (int i=2; i<message.size(); i++) {
+            if (i%2 == 0)
+              hashe ^= m[i];
+            else
+              hasho ^= m[i];
+        }
+        std::cout << message.size() << " even: " << hashe << " odd: " << hasho << std::endl;
+	std::cout << message.size() <<  " " << ((char*)message.data()) << std::endl;
 	TH1F* h1 = (TH1F*)(buf.ReadObjectAny(TH1F::Class()));
 	if (h1)
 	    std::cout << h1->GetMean() << std::endl;
