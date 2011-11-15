@@ -1,0 +1,1393 @@
+Index: src/cmd/ProcBlockManager.cc
+===================================================================
+--- src/cmd/ProcBlockManager.cc	(revision 634)
++++ src/cmd/ProcBlockManager.cc	(working copy)
+@@ -36,6 +36,7 @@
+ #include <RAT/GenLikePosPDFProc.hh>
+ #include <RAT/GenLikeEnergyPDFProc.hh>
+ #include <RAT/PackEvents.hh>
++#include <RAT/DispatchEvents.hh>
+ #include <RAT/PMTCalib.hh>
+ #include <RAT/SanityCheckProc.hh>
+ #include <RAT/RingOfFire.hh>
+@@ -89,9 +90,8 @@
+   // I/O
+   fProcAllocators["outroot"] = new ProcAllocatorTmpl<OutROOTProc>;
+   fProcAllocators["outnet"] = new ProcAllocatorTmpl<OutNetProc>;
+-  // Event packing
+   fProcAllocators["pack"] = new ProcAllocatorTmpl<PackEvents>;
+-  // Filling RCH File 
++  fProcAllocators["dispatch"] = new ProcAllocatorTmpl<DispatchEvents>;
+   fProcAllocators["fillRCH"] = new ProcAllocatorTmpl<FillRCHProc>;
+ 
+   // Fitters
+@@ -129,16 +129,16 @@
+   fProcAllocators["calibratePMT"]= new ProcAllocatorTmpl<PMTCalib>;
+   fProcAllocators["sanitychecks"]= new ProcAllocatorTmpl<SanityCheckProc>;
+   fProcAllocators["junkcut"] = new ProcAllocatorTmpl<JunkCut>;
+-	fProcAllocators["ringoffire"] = new ProcAllocatorTmpl<RingOfFire>;
+-	fProcAllocators["qvnhit"] = new ProcAllocatorTmpl<QvNhit>;
+-	fProcAllocators["qcluster"] = new ProcAllocatorTmpl<QClusterCut>;
+-	fProcAllocators["ftscut"] = new ProcAllocatorTmpl<FTSCut>;
+-	fProcAllocators["crateisotropy"] = new ProcAllocatorTmpl<CrateIsotropy>;
+-	fProcAllocators["owlcut"] = new ProcAllocatorTmpl<OwlCut>;
+-	fProcAllocators["zerozerocut"] = new ProcAllocatorTmpl<ZeroZeroCut>;
+-	fProcAllocators["datacleaning"] = new ProcAllocatorTmpl<DataCleaning>;
+-	fProcAllocators["datacleaningprune"] = new ProcAllocatorTmpl<DataCleaningPrune>;
+-	fProcAllocators["reactornu"] = new ProcAllocatorTmpl<ReactorNuSelector>;
++  fProcAllocators["ringoffire"] = new ProcAllocatorTmpl<RingOfFire>;
++  fProcAllocators["qvnhit"] = new ProcAllocatorTmpl<QvNhit>;
++  fProcAllocators["qcluster"] = new ProcAllocatorTmpl<QClusterCut>;
++  fProcAllocators["ftscut"] = new ProcAllocatorTmpl<FTSCut>;
++  fProcAllocators["crateisotropy"] = new ProcAllocatorTmpl<CrateIsotropy>;
++  fProcAllocators["owlcut"] = new ProcAllocatorTmpl<OwlCut>;
++  fProcAllocators["zerozerocut"] = new ProcAllocatorTmpl<ZeroZeroCut>;
++  fProcAllocators["datacleaning"] = new ProcAllocatorTmpl<DataCleaning>;
++  fProcAllocators["datacleaningprune"] = new ProcAllocatorTmpl<DataCleaningPrune>;
++  fProcAllocators["reactornu"] = new ProcAllocatorTmpl<ReactorNuSelector>;
+   // -----------------------------------------------------------------
+ 
+   // Register main block
+Index: src/io/DispatchEvents.hh
+===================================================================
+--- src/io/DispatchEvents.hh	(revision 0)
++++ src/io/DispatchEvents.hh	(revision 0)
+@@ -0,0 +1,41 @@
++////////////////////////////////////////////////////////////////////
++/// \class RAT::DispatchEvents
++///
++/// \brief Dispatcher, to send MC events out on the network
++///          
++/// \author A Mastbaum <mastbaum@hep.upenn.edu>
++///
++/// REVISION HISTORY:\n
++///     11 Nov 2011 : A Mastbaum - first revision
++///
++///  \detail
++///
++////////////////////////////////////////////////////////////////////
++#ifndef __RAT_DispatchEvents___
++#define __RAT_DispatchEvents___
++
++#include <RAT/Processor.hh>
++#include <RAT/AvalancheServer.hpp>
++
++namespace RAT {
++
++class DispatchEvents : public Processor {
++public:
++  DispatchEvents();
++  virtual ~DispatchEvents();
++  virtual Processor::Result DSEvent(DS::Root *ds);
++
++  // address - string, name of the socket for output
++  // e.g. "tcp://localhost:7777"
++  virtual void SetS(std::string param, std::string value);
++  
++protected:
++  bool fSentRunHeaders;
++  std::string address;
++  AvalancheServer *serv;
++};
++
++} // namespace RAT
++
++#endif
++
+Index: src/io/PackEvents.cc
+===================================================================
+--- src/io/PackEvents.cc	(revision 634)
++++ src/io/PackEvents.cc	(working copy)
+@@ -1,15 +1,16 @@
+ ////////////////////////////////////////////////////////////////////
+ // Last svn revision: $Id$
+ ////////////////////////////////////////////////////////////////////
++
+ #include <RAT/PackEvents.hh>
+-#include <RAT/DS/PackedEvent.hh>
++#include <RAT/Pack.hh>
+ #include <RAT/Log.hh>
+ #include <RAT/Processor.hh>
+-#include <RAT/DB.hh>
++#include <RAT/BitManip.hh>
++#include <RAT/DS/PackedEvent.hh>
+ #include <RAT/DS/RunStore.hh>
+ #include <RAT/DS/Run.hh>
+ #include <RAT/DS/HeaderInfo.hh>
+-#include <RAT/BitManip.hh>
+ 
+ #include <G4UImessenger.hh>
+ #include <TFile.h>
+@@ -17,581 +18,102 @@
+ 
+ namespace RAT {
+ 
+-const int Nheader = 6;
+-
+ PackEvents::PackEvents() : Processor("PackEvents")
+ {
+-  // VERSION NUMBER FOR THIS CODE: UPDATE WITH ANY STRUCT CHANGES!
+-  fPackVer = 0;
+-  
+-  // Counter for N events
+   fEVID = 0;
+-  
+-  fFile = 0;
++  fFile = 0x0;
+   fAutosave = 1024; // kB
+-  branchPackedEv = new DS::PackedEvent();
+-  branchPackedRec = new DS::PackedRec();
+-  
+-  fBits = new BitManip();
+-
+-  // Extract default filename from database.  Used if no
+-  // output file is specified by user with /rat/procset
+-  DBLinkPtr roottab = DB::Get()->GetLink("ROOT");
+-  try {
+-    fDefaultFileName = roottab->GetS("filename");
+-  } catch (DBNotFoundError &e) { 
+-    fDefaultFileName = "out.root";
+-  }
++  fBranchRec = new DS::PackedRec();
+ }
+ 
+ PackEvents::~PackEvents()
+ {
+-  if (fFile) {
+     fFile->cd();
+     fTree->Write();
+-    //DS::RunStore::FlushWriteTree();
+-    fFile->Close(); // also deletes TTree?
++    fFile->Close();
+ 
+     delete fFile;
+-  }
+-  
+-  // Don't delete branchDS because it looks like the TTree took ownership of it
+ }
+ 
+ void PackEvents::SetS(std::string param, std::string value)
+ {
+   if (param == "file") {
+-      //if (fRunNum > 0) {
+-	//  std::ostringstream buffer;
+-	//  char temp_str[16];
+-	//  snprintf(temp_str, sizeof(temp_str), "_%04i.root",100000);
+-	//  buffer << value << temp_str; 
+-	//  value = buffer.str();
+-      //}
+-      if (!OpenFile(value))
+-         Log::Die("PackEvents: Cannot open file " + value);
+-  } 
++    info << "PackEvents: Writing to " << value << newline;
++    fFile = TFile::Open(value.c_str(), "recreate");
++    Log::Assert(fFile, "PackEvents: Unable to open output file");
++
++    // Set up tree
++    fTree = new TTree("PackT", "RAT Tree");	
++    fTree->Branch("PackRec", fBranchRec->ClassName(), &fBranchRec, 32000, 99);
++
++    // Allow tree to be recovered up to last N kilobytes if RAT terminates suddenly
++    fTree->SetAutoSave(fAutosave*1024);
++  }
+ }
+ 
+ void PackEvents::SetI(std::string param, int value)
+ {
+   if (param == "autosave") {
+-    if (value <= 0)
+-       Log::Die("PackEvents: autosave parameter must be a postive integer");
++    Log::Assert(value > 0, "PackEvents: autosave parameter must be a postive integer");
+       
+     fAutosave = value;
+     if (fTree) // fAutosave might be called after the file is already opened
+-       fTree->SetAutoSave(fAutosave*1024 /*bytes*/); 
++       fTree->SetAutoSave(fAutosave*1024);
+   }
+ }
+ 
+-bool PackEvents::OpenFile(std::string theFilename)
+-{
+-  info << "PackEvents: Writing to " << theFilename << newline;
+-  fFile = TFile::Open(theFilename.c_str(), "RECREATE");
+-
+-  if (!fFile)
+-     return false;
+-
+-  fFileName = theFilename;
+-
+-  // Setup tree
+-  fTree = new TTree("PackT", "RAT Tree");	
+-  fTree->Branch("PackRec", branchPackedRec->ClassName(), &branchPackedRec, 32000, 99);
+-
+-  // Allow tree to be recovered up to last N kilobytes if RAT terminates suddenly
+-  fTree->SetAutoSave(fAutosave*1024 /*bytes*/); 
+-  
+-  return true;
+-}
+-
+-
+ Processor::Result PackEvents::DSEvent(DS::Root *ds)
+ {
+-  if(!fFile){
+-    // Assume no file specified, and so we must open the default
+-    info << "PackEvents: No output file specified, opening " << fDefaultFileName
+-	  << newline;
+-    if (!OpenFile(fDefaultFileName))
+-      Log::Die("PackEvents: No output file specified and cannot open default: "
+-		  +fDefaultFileName);
+-  }
++  Log::Assert(fFile, "PackEvents: Output file required");
+   
+   // If we're on the first event, fill the initial header information
+-  if(fEVID == 0){
+-    PackEvents::MakeRunHeader(ds);
+-  }
+-  
+-  // If this ds event has event-level info attached, make more headers
+-  if(ds->ExistHeaderInfo()){
+-    PackEvents::MakeEventHeader(ds);
+-  }
+-
+-  // Loop over triggered events
+-  for (int iev=0; iev<ds->GetEVCount(); ++iev){
+-    DS::EV *ev = ds->GetEV(iev);
+-
+-    // Get Run level info
+-    DS::Run *run = RAT::DS::RunStore::GetRun(ds);
+-    int runID = run->GetRunID();
+-    int subRunID = run->GetSubRunID();
+-    fRunType = run->GetRunType();
+-    fMCFlag = run->GetMCFlag();
+-    fDataType = run->GetDataType();
+-  
+-    // Get Root level info
+-    fRunID = ds->GetRunID();
+-    fSubRunID = ds->GetSubRunID();
+-    if(fSubRunID!=subRunID)G4cout<<"subRun IDs DO NOT MATCH: "<<fSubRunID<<" & "<<subRunID<<G4endl;
+-    if(fRunID!=runID)G4cout<<"RUN IDs DO NOT MATCH: "<<fRunID<<" & "<<runID<<G4endl;
+-    
+-    // Create instance of PackedEvent, and PackedRec branch
+-    DS::PackedEvent *PackedEV;
+-    DS::PackedRec *PackedRec = new DS::PackedRec();
+-
+-    // Pack the event info
+-    PackedEV = PackEvents::PackEvent(ev);
+-    PackedRec->RecordType = 1;
+-    
+-    // Write to tree
+-    PackedRec->Rec = new DS::PackedEvent();
+-    PackedRec->Rec = PackedEV;
+-    branchPackedRec = PackedRec;
++  if (fEVID == 0) {
++    fBranchRec = Pack::MakeRunHeader(ds);
+     fTree->Fill();
+-    delete PackedRec->Rec;
+-    delete PackedRec;
+-    //delete PackedEV;
+-    ++fEVID;
+-  }
++    delete fBranchRec;
+   
+-  return Processor::OK;
+-}
++    // If AVStat / ManipStat are filled, make CAAC/CAST headers:
++    DS::Run* run = RAT::DS::RunStore::GetRun(ds);
+ 
+-// Fill event-level header information
+-void PackEvents::MakeEventHeader(DS::Root *ds)
+-{
+-  DS::HeaderInfo *header = ds->GetHeaderInfo();
+-  
+-  // Make appropriate headers, if info exists
+-  if(header->ExistTRIGInfo()){
+-    DS::TRIGInfo *trig = header->GetTRIGInfo();
+-    PackEvents::MakeTRIGHeader(trig);
+-  }
++    if (run->ExistManipStat()) {
++      fBranchRec = Pack::MakeManipHeader(ds);
++      fTree->Fill();
++      delete fBranchRec;
++    }
+ 
+-  if(header->ExistEPEDInfo()){
+-    DS::EPEDInfo *eped = header->GetEPEDInfo();
+-    PackEvents::MakeEPEDHeader(eped);
++    if (run->ExistAVStat()) {
++      fBranchRec = Pack::MakeAVHeader(ds);
++      fTree->Fill();
++      delete fBranchRec;
++    }
+   }
+   
+-  return;
+-}
++  // If this ds event has event-level info attached, make more headers
++  if (ds->ExistHeaderInfo()) {
++    if (ds->GetHeaderInfo()->ExistTRIGInfo()) {
++      fBranchRec = Pack::MakeTRIGHeader(ds);
++      fTree->Fill();
++      delete fBranchRec;
++    }
+ 
+-void PackEvents::MakeTRIGHeader(DS::TRIGInfo *trig)
+-{
+-  // Create instance of generic record type, and set type for trig
+-  DS::PackedRec *PackedRec = new DS::PackedRec();
+-  PackedRec->RecordType = 5;
+-    
+-  // Fill header info
+-  DS::TRIG *thisRec = new DS::TRIG();
+-  thisRec->TrigMask = trig->GetTrigMask();
+-  thisRec->PulserRate = trig->GetPulserRate();
+-  thisRec->MTC_CSR = trig->GetMTC_CSR();
+-  thisRec->LockoutWidth = trig->GetLockoutWidth();
+-  thisRec->PrescaleFreq = trig->GetPrescaleFreq();
+-  thisRec->EventID = trig->GetEventID();
+-  thisRec->RunID = trig->GetRunID();
+-  
+-  int ntrigthold = trig->GetNTrigTHold();
+-  int ntrigzero = trig->GetNTrigZeroOffset();
+-  for(int i=0;i<10;++i){
+-    thisRec->Threshold[i] = 0;
+-    thisRec->TrigZeroOffset[i] = 0;
+-    if(i<ntrigthold)thisRec->Threshold[i] = trig->GetTrigTHold(i);
+-    if(i<ntrigzero)thisRec->TrigZeroOffset[i] = trig->GetTrigZeroOffset(i);
++    if (ds->GetHeaderInfo()->ExistEPEDInfo()) {
++      fBranchRec = Pack::MakeEPEDHeader(ds);
++      fTree->Fill();
++      delete fBranchRec;
++    }
+   }
+ 
+-  // Fill tree
+-  PackedRec->Rec = new DS::TRIG();
+-  PackedRec->Rec = thisRec;
+-  branchPackedRec = PackedRec;
+-  fTree->Fill();
+-  delete PackedRec->Rec;
+-  //delete thisRec;
+-  delete PackedRec;
+-  
+-  return;
+-}
+-
+-
+-void PackEvents::MakeEPEDHeader(DS::EPEDInfo *eped)
+-{
+-  // Create instance of generic record type, and set type for eped
+-  DS::PackedRec *PackedRec = new DS::PackedRec();
+-  PackedRec->RecordType = 6;
+-    
+-  // Fill header info
+-  DS::EPED *thisRec = new DS::EPED();
+-  thisRec->GTDelayCoarse = eped->GetGTDelayCoarse();
+-  thisRec->GTDelayFine = eped->GetGTDelayFine();
+-  thisRec->QPedAmp = eped->GetQPedAmp();
+-  thisRec->QPedWidth = eped->GetQPedWidth();
+-  thisRec->PatternID = eped->GetPatternID();
+-  thisRec->CalType = eped->GetCalType();
+-  thisRec->EventID = eped->GetEventID();
+-  thisRec->RunID = eped->GetRunID();
+-
+-  // Fill tree
+-  PackedRec->Rec = new DS::EPED();
+-  PackedRec->Rec = thisRec;
+-  branchPackedRec = PackedRec;
+-  fTree->Fill();
+-  delete PackedRec->Rec;
+-  //delete thisRec;
+-  delete PackedRec;
+-  
+-  return;
+-}
+-
+-
+-// Fill run header information
+-void PackEvents::MakeRunHeader(DS::Root *ds)
+-{
+-  // Get run-level info
+-  DS::Run *run = RAT::DS::RunStore::GetRun(ds);
+-  
+-  // Create instance of generic record type, and set type for run header
+-  DS::PackedRec *PackedRec = new DS::PackedRec();
+-  PackedRec->RecordType = 2;
+-    
+-  // Fill header info
+-  DS::RHDR *thisRec = new DS::RHDR();
+-  thisRec->Date = run->GetDate();
+-  thisRec->Time = run->GetTime();
+-  thisRec->DAQVer = run->GetDAQVer();
+-  thisRec->CalibTrialID = run->GetCalibTrialID();
+-  thisRec->SrcMask = run->GetSrcMask();
+-  thisRec->RunMask = run->GetRunType();
+-  thisRec->CrateMask = run->GetCrateMask();
+-  thisRec->FirstEventID = run->GetFirstEventID();
+-  thisRec->ValidEventID = run->GetValidEventID();
+-  thisRec->RunID = run->GetRunID();
+-
+-  // Fill tree
+-  PackedRec->Rec = new DS::RHDR();
+-  PackedRec->Rec = thisRec;
+-  branchPackedRec = PackedRec;
+-  fTree->Fill();
+-  delete PackedRec->Rec;
+-  ////delete thisRec;
+-  delete PackedRec;
+-  
+-  // If AVStat / ManipStat are filled, make CAAC/CAST headers:
+-  if(run->ExistManipStat())PackEvents::MakeManipHeader(run);
+-  if(run->ExistAVStat())PackEvents::MakeAVHeader(run);
+-
+-  return;
+-}
+-
+-void PackEvents::MakeAVHeader(DS::Run *run)
+-{
+-  // Get AV status info
+-  DS::AVStat *avstat = run->GetAVStat();
+-  
+-  // Create instance of generic record type, and set type for AV header
+-  DS::PackedRec *PackedRec = new DS::PackedRec();
+-  PackedRec->RecordType = 3;
+-    
+-  // Fill header info
+-  DS::CAAC *thisRec = new DS::CAAC();
+-  for(int i=0;i<3;++i){
+-    thisRec->AVPos[i] = avstat->GetPosition(i);
+-    thisRec->AVRoll[i] = avstat->GetRoll(i);
++  // Loop over triggered events
++  for (int iev=0; iev<ds->GetEVCount(); iev++) {
++    fBranchRec = Pack::PackEvent(ds, iev);
++    fTree->Fill();
++    delete fBranchRec;
+   }
+-  for(int i=0;i<7;++i){
+-    thisRec->AVRopeLength[i] = avstat->GetRopeLength(i);
+-  }
+ 
+-  // Fill tree
+-  PackedRec->Rec = new DS::CAAC();
+-  PackedRec->Rec = thisRec;
+-  branchPackedRec = PackedRec;
+-  fTree->Fill();
+-  delete PackedRec->Rec;
+-  //delete thisRec;
+-  delete PackedRec;
++  fEVID++;
+ 
+-  return;
++  return Processor::OK;
+ }
+ 
+-void PackEvents::MakeManipHeader(DS::Run *run)
+-{
+-  // Get Manipulator status info
+-  DS::ManipStat *manipstat = run->GetManipStat();
+-  
+-  // Create instance of generic record type, and set type for Manip header
+-  DS::PackedRec *PackedRec = new DS::PackedRec();
+-  PackedRec->RecordType = 4;
+-    
+-  // Fill header info
+-  DS::CAST *thisRec = new DS::CAST();
+-  for(int i=0;i<3;++i){
+-    thisRec->ManipPos[i] = manipstat->GetManipPos(i);
+-    thisRec->ManipDest[i] = manipstat->GetManipDest(i);
+-    thisRec->SrcPosUncert2[i] = manipstat->GetSrcPosUnc(i);
+-  }
+-  thisRec->SourceID = manipstat->GetSrcID();
+-  thisRec->SourceStat = manipstat->GetSrcStatus();
+-  thisRec->NRopes = manipstat->GetNRopes();
+-  thisRec->SrcPosUncert1 = manipstat->GetSrcPosUnc();
+-  thisRec->LBallOrient = manipstat->GetLaserballOrient();
+-
+-  int nrope = manipstat->GetNRopes();
+-  thisRec->RopeID.resize(nrope);
+-  thisRec->RopeLen.resize(nrope);
+-  thisRec->RopeTargLen.resize(nrope);
+-  thisRec->RopeVel.resize(nrope);
+-  thisRec->RopeTens.resize(nrope);
+-  thisRec->RopeErr.resize(nrope);
+-  for(int i=0; i<nrope;++i){
+-    thisRec->RopeID[i] = manipstat->GetRopeID(i);
+-    thisRec->RopeLen[i] = manipstat->GetRopeLength(i);
+-    thisRec->RopeTargLen[i] = manipstat->GetRopeTargLength(i);
+-    thisRec->RopeVel[i] = manipstat->GetRopeVelocity(i);
+-    thisRec->RopeTens[i] = manipstat->GetRopeTension(i);
+-    thisRec->RopeErr[i] = manipstat->GetRopeErr(i);
+-  }
+-
+-  // Fill tree
+-  PackedRec->Rec = new DS::CAST();
+-  PackedRec->Rec = thisRec;
+-  branchPackedRec = PackedRec;
+-  fTree->Fill();
+-  delete PackedRec->Rec;
+-  //delete thisRec;
+-  delete PackedRec;
+-
+-  return;
+-}
+-
+-// Pack the event
+-DS::PackedEvent* PackEvents::PackEvent(DS::EV *ev)
+-{
+-  DS::PackedEvent *PackedEV;
+-  PackedEV = PackEvents::PackHeader(ev);
+-  
+-  int npmtall = ev->GetPMTAllUnCalCount();
+-  int npmtuncal = ev->GetPMTUnCalCount();
+-  int nhits = ev->GetNhits();
+-  if(npmtuncal != nhits)PackEvents::Die("",1,nhits,npmtuncal);
+-  
+-  // Set number of PMT bundles
+-  PackedEV->PMTBundles.resize(npmtall);
+-  int eventID = ev->GetEventID();
+-  
+-  // Pack each bundle
+-  for(int inh=0; inh<npmtall; ++inh){
+-    DS::PMTUnCal *pmt = ev->GetPMTAllUnCal(inh);
+-    //DS::PMTBundle PMTBundle;
+-    PackedEV->PMTBundles[inh] = PackEvents::PackPMT(pmt, eventID);
+-  }
+-
+-  return PackedEV;
+-}
+-
+-
+-// Pack the event header info
+-DS::PackedEvent* PackEvents::PackHeader(DS::EV *ev)
+-{
+-  DS::PackedEvent *PackedEV = new DS::PackedEvent();
+-  
+-  // Get event level info
+-  UInt_t trigError = ev->GetTrigError();
+-  UInt_t trigType = ev->GetTrigType();
+-  UInt_t eventID = ev->GetEventID();
+-  ULong64_t clockCount50 = ev->GetClockCount50();
+-  ULong64_t clockCount10 = ev->GetClockCount10();
+-  char clockStat10 = ev->GetClockStat10();
+-  int nhits = ev->GetNhits();
+-  
+-  // Init header words
+-  int header[Nheader];
+-  for(int i=0;i<Nheader;++i){
+-    header[i] = 0;
+-  }
+-
+-  // Check some lengths:
+-  if(!fBits->CheckLength((UInt_t)fRunType, 16))PackEvents::Die("RunType",2,fRunType,0);
+-  if(!fBits->CheckLength(nhits, 16))PackEvents::Die("NHits",2,nhits,0);
+-  if(!fBits->CheckLength(clockStat10, 4))PackEvents::Die("ClockStat10",2,clockStat10,0);
+-  if(!fBits->CheckLength(eventID, 24))PackEvents::Die("GTID",2,eventID,0);
+-  if(!fBits->CheckLength(trigError, 15))PackEvents::Die("TrigError",2,trigError,0);
+-
+-  // Pack header words
+-  ULong64_t Lclock50part1 = fBits->GetBits(clockCount50, 0, 11);
+-  ULong64_t Lclock50part2 = fBits->GetBits(clockCount50, 11, 32);
+-  ULong64_t Lclock10part1 = fBits->GetBits(clockCount10, 0, 32);
+-  ULong64_t Lclock10part2 = fBits->GetBits(clockCount10, 32, 21);
+-  UInt_t clock50part1 = (UInt_t)Lclock50part1;
+-  UInt_t clock50part2 = (UInt_t)Lclock50part2;
+-  UInt_t clock10part1 = (UInt_t)Lclock10part1;
+-  UInt_t clock10part2 = (UInt_t)Lclock10part2;
+-  if(!fBits->CheckLength(clock50part1, 11))PackEvents::Die("clock50part1",2,clock50part1,0);
+-  if(!fBits->CheckLength(clock50part2, 32))PackEvents::Die("clock50part2",2,clock50part2,0);
+-  if(!fBits->CheckLength(clock10part1, 32))PackEvents::Die("clock10part1",2,clock10part1,0);
+-  if(!fBits->CheckLength(clock10part2, 21))PackEvents::Die("clock10part2",2,clock10part2,0);
+-  
+-  ULong64_t test10 = 0;
+-  ULong64_t p1 = (ULong64_t)clock10part1;
+-  ULong64_t p2 = (ULong64_t)clock10part2;
+-  test10 = (p2<<32)+p1;
+-  if(test10!=clockCount10)G4cout<<"\033[34m COUNTS DONT MATCH! \033[m"<<G4endl;
+-  
+-  header[0] = clock10part1;                                      // 32 bits of 10MHz clock
+-  header[1] = clock10part2;                                      // 21 bits of ""
+-  header[1] = fBits->SetBits(header[1], 21, clock50part1);  // 11 bits of 50MHz clock 
+-  header[2] = clock50part2;                                      // 32 bits of ""
+-
+-  unsigned int trig1 = fBits->GetBits(trigType, 0, 8);
+-  unsigned int trig2 = fBits->GetBits(trigType, 8, 19);
+-  if(!fBits->CheckLength(trigType, 27))PackEvents::Die("TrigWord",2,trigType,0);
+-  if(!fBits->CheckLength(trig1, 8))PackEvents::Die("TrigWordP1",2,trig1,0);
+-  if(!fBits->CheckLength(trig2, 19))PackEvents::Die("TrigWordP2",2,trig2,0);
+-  
+-  header[3] = eventID;                                           // 24 bits of GTID
+-  header[3] = fBits->SetBits(header[3], 24, trig1);         // 8 bits of Trigger word
+-  header[4] = trig2;                                             // 19 bits of Trigger word
+-  header[5] = fBits->SetBits(header[5], 17, trigError);   // 15 bits of TrigError wd
+-  
+-  for(int i=0;i<Nheader;++i){
+-    PackedEV->MTCInfo[i] = header[i];
+-  }
+-  
+-  PackedEV->DataType = fDataType;
+-  PackedEV->MCFlag = fMCFlag;
+-  PackedEV->PackVer = fPackVer;
+-  PackedEV->RunMask = fRunType;
+-  PackedEV->RunID = fRunID;
+-  PackedEV->EVOrder = fEVID;
+-  PackedEV->SubRunID = fSubRunID;
+-  PackedEV->NHits = nhits;
+-  PackedEV->ClockStat10 = clockStat10;
+-
+-  return PackedEV;
+-}
+-
+-
+-// Pack the PMT Bundles
+-DS::PMTBundle PackEvents::PackPMT(DS::PMTUnCal *pmt, unsigned int gtid)
+-{
+-  DS::PMTBundle PMTBundle;
+-  PMTBundle.Word[0] = 0;
+-  PMTBundle.Word[1] = 0;
+-  PMTBundle.Word[2] = 0;
+-  int word1 = 0;
+-  int word2 = 0;
+-  int word3 = 0;
+-    
+-  // Get PMT level info
+-  int lcn = pmt->GetID();
+-  int icrate = fBits->GetCrate(lcn);
+-  int icard = fBits->GetCard(lcn);
+-  int ichan = fBits->GetChannel(lcn);
+-  int cell = pmt->GetCellID();
+-  char chanFlags = pmt->GetChanFlags();
+-  // Order of flags in chanFlags, from least sig bit upwards:
+-  // CGT ES16, CGT ES24, Missed Count, NC/CC Flag, LGISELECT, CMOS ES16
+-
+-  // Get uncalibrated charges and time
+-  unsigned short qhs = pmt->GetsQHS();
+-  unsigned short qhl = pmt->GetsQHL();
+-  unsigned short qlx = pmt->GetsQLX();
+-  unsigned short tac = pmt->GetsPMTt();
+-  
+-  // Flip final bit of Q,T (to mimic the fact that the ADCs are just plain weird)
+-  BitManip bits;
+-  qhs = bits.FlipBit(qhs,11);
+-  qhl = bits.FlipBit(qhl,11);
+-  qlx = bits.FlipBit(qlx,11);
+-  tac = bits.FlipBit(tac,11);
+-
+-  // Check some lengths:
+-  if(!fBits->CheckLength(qlx, 12))PackEvents::Die("QLX",2,qlx,0); // QLX was > 12 bits????
+-  if(!fBits->CheckLength(qhs,12))PackEvents::Die("QHS",2,qhs,0);    // QHS was > 12 bits????
+-  if(!fBits->CheckLength(qhl,12))PackEvents::Die("QHL",2,qhl,0);    // QHL was > 12 bits????
+-  if(!fBits->CheckLength(tac,12))PackEvents::Die("TAC",2,tac,0);    // TAC was > 12 bits????
+-  if(!fBits->CheckLength(cell,4))PackEvents::Die("CellID",2,cell,0);    // CellID was > 4 bits????
+-  if(!fBits->CheckLength(icrate,5))PackEvents::Die("Crate#",2,icrate,0);    // CrateID was > 5 bits????
+-  if(!fBits->CheckLength(icard,4))PackEvents::Die("Card#",2,icard,0);    // CardID was > 4 bits????
+-  if(!fBits->CheckLength(ichan,5))PackEvents::Die("Channel#",2,ichan,0);    // ChanID was > 5 bits????
+-  
+-  // Pack this bundle
+-  
+-  // First word
+-  word1 = fBits->GetBits(gtid, 0, 16);       // 16 bits of GTID
+-  word1 = fBits->SetBits(word1, 16, ichan);  // 5 bits of ichan
+-  word1 = fBits->SetBits(word1, 21, icrate); // 5 bits of icrate
+-  word1 = fBits->SetBits(word1, 26, icard);  // 4 bits of icard
+-  if(fBits->TestBit(chanFlags,0)){           // 1 bit for CGT ES16
+-    word1 = fBits->SetBit(word1, 30);
+-  }
+-  if(fBits->TestBit(chanFlags,1)){           // 1 bit for CGT ES24
+-    word1 = fBits->SetBit(word1, 31);
+-  }
+-  
+-  // Second word  
+-  word2 = qlx;                                    // 12 bits for QLX
+-  word2 = fBits->SetBits(word2, 12, cell);   // 4 bits for cellID
+-  word2 = fBits->SetBits(word2, 16, qhs);    // 12 bits for QHS
+-  if(fBits->TestBit(chanFlags,2)){           // 1 bit for `Missed count'
+-    word2 = fBits->SetBit(word2, 28);
+-  }
+-  if(fBits->TestBit(chanFlags,3)){           // 1 bit for NC/CC
+-    word2 = fBits->SetBit(word2, 29);
+-  }
+-  if(fBits->TestBit(chanFlags,4)){           // 1 bit for LGISelect
+-    word2 = fBits->SetBit(word2, 30);
+-  }
+-  if(fBits->TestBit(chanFlags,5)){           // 1 bit for CMOS ES16
+-    word2 = fBits->SetBit(word2, 31);
+-  }
+-  
+-  // Third word
+-  int gtidpart1 = fBits->GetBits(gtid, 16, 4);
+-  int gtidpart2 = fBits->GetBits(gtid, 20, 4);
+-  word3 = qhl;                                         // 12 bits for QHL
+-  word3 = fBits->SetBits(word3, 12, gtidpart1);   // 4 bits of GTID
+-  word3 = fBits->SetBits(word3, 16, tac);         // 12 bits for TAC
+-  word3 = fBits->SetBits(word3, 28, gtidpart2);   // 4 bits of GTID
+-
+-  PMTBundle.Word[0] = word1;
+-  PMTBundle.Word[1] = word2;
+-  PMTBundle.Word[2] = word3;
+-  return PMTBundle;
+-  
+-}
+-
+-
+-// Handle FATAL errors
+-void PackEvents::Die(std::string message, int flag_err, int info1, int info2, int return_code)
+-{
+-  warn << "\033[31m PACKING PROBLEM: \033[m" <<newline;
+-
+-  if(flag_err==1){  // NHit != NPMTUnCal
+-    warn <<"Discrepancy in # events:"<<newline;
+-    warn<<"We have "<<info1<<" NHit but "<<info2<<" PMTUnCal in this event"<<newline;
+-    warn<<"Something is wrong."<<newline;
+-    warn<<newline;
+-  }
+-
+-  if(flag_err==2){  // Word is wrong length!
+-    warn <<"Discrepancy in length of integer"<<newline;
+-    warn <<message<<" value is "<<info1<<newline;
+-    warn<<"Something is wrong."<<newline;
+-    warn<<newline;
+-  }
+-  exit(return_code);
+-}
+-  
+-
+ } // namespace RAT
++
+Index: src/io/AvalancheServer.cc
+===================================================================
+--- src/io/AvalancheServer.cc	(revision 0)
++++ src/io/AvalancheServer.cc	(revision 0)
+@@ -0,0 +1,38 @@
++#include <zmq.hpp>
++#include <TBuffer.h>
++#include <TBufferFile.h>
++#include <stdlib.h>
++#include <string>
++
++#include "AvalancheServer.hpp"
++
++AvalancheServer::AvalancheServer(std::string _addr) {
++    // set up zeromq sockets
++    address = _addr;
++    context = new zmq::context_t(1);
++    socket = new zmq::socket_t(*context, ZMQ_PUB);
++    socket->connect(address.c_str());
++}
++
++int AvalancheServer::sendObject(TObject* o) {
++    // use TBufferFile for TObject serialization
++    TBufferFile bf(TBuffer::kWrite);
++    bf.Reset();
++
++    // ensure object is serialized correctly
++    if (bf.WriteObjectAny(o, o->Class()) != 1)
++        return 1;
++
++    // zmq_send() frees the memory the message points to, which in our case is
++    // owned by a TBufferFile. hence we need to make a copy.
++    int bufferSize = bf.Length();
++    char* buffer = (char*) malloc(bufferSize * sizeof(char));
++    memcpy(buffer, bf.Buffer(), bufferSize);
++
++    // send
++    zmq::message_t message((void*)buffer, bufferSize, 0, 0);
++    socket->send(message);
++
++    return 0;
++}
++
+Index: src/io/AvalancheServer.hpp
+===================================================================
+--- src/io/AvalancheServer.hpp	(revision 0)
++++ src/io/AvalancheServer.hpp	(revision 0)
+@@ -0,0 +1,17 @@
++#include <string>
++#include <zmq.hpp>
++#include <TObject.h>
++
++class AvalancheServer
++{
++    public:
++        AvalancheServer(std::string _addr);
++        ~AvalancheServer() {};
++        int sendObject(TObject* o);
++
++    protected:
++        std::string address;
++        zmq::context_t* context;
++        zmq::socket_t* socket;
++};
++
+Index: src/io/PackEvents.hh
+===================================================================
+--- src/io/PackEvents.hh	(revision 634)
++++ src/io/PackEvents.hh	(working copy)
+@@ -1,9 +1,9 @@
+ ////////////////////////////////////////////////////////////////////
+ // Last svn revision: $Id$
+ ////////////////////////////////////////////////////////////////////
+-/// \class RAT:PackEvents
++/// \class RAT::PackEvents
+ ///
+-/// \brief  Packer, to pack MC events into the packed root format
++/// \brief Packer, to pack MC events into the packed root format
+ ///          
+ /// \author Gabriel D. Orebi Gann <orebi@hep.upenn.edu>
+ ///
+@@ -11,13 +11,14 @@
+ ///     09 Apr 2010 : Gabriel Orebi Gann - extend packing to include
+ ///                   header info, as well as detector events
+ ///     28 May 2010 : Gabriel Orebi Gann - flip final bit of PMT Q,T
+-///                   values (to mimic the ADC in data, which 
+-///                   outputs them flipped)
++///                   values (to mimic the ADC in data, which outputs them 
++///                   flipped)
+ ///     03 Mar 2011 : Gabriel Orebi Gann - edits to incorporate new channel 
+ ///                   types
+ ///     17 Oct 2011 : Gabriel Orebi Gann - Move bit funcs to BitManip
++///     11 Nov 2011 : A Mastbaum - refactor so that packing functions can be
++///                   reused in other code
+ ///
+-///
+ ///  \detail  This class packs the full simulated MC events into
+ ///           the same packed root format that the event builder
+ ///           outputs.  i.e. the result is a file that looks as 
+@@ -26,17 +27,12 @@
+ ///           NB since we are mimicking real data, only the EV side
+ ///           of the events is packed, not the MC side.
+ ///
+-///
+-///
+-///
+ ////////////////////////////////////////////////////////////////////
+-#ifndef __RATPackEvents___
+-#define __RATPackEvents___
++#ifndef __RAT_PackEvents___
++#define __RAT_PackEvents___
+ 
+ #include <RAT/Processor.hh>
+-#include <RAT/DS/Run.hh>
+ #include <RAT/DS/PackedEvent.hh>
+-#include <RAT/BitManip.hh>
+ 
+ class TFile;
+ class TTree;
+@@ -45,54 +41,26 @@
+ 
+ class PackEvents : public Processor {
+ public:
+-//  static Int_t fRunNum;
+   PackEvents();
+   virtual ~PackEvents();
++  virtual Processor::Result DSEvent(DS::Root *ds);
+ 
+   // file - string, name of file to open for output, file will be erased
+-  // updatefile - string, name of file to append to
+-  // (do not use both file and update file)
+   virtual void SetS(std::string param, std::string value);
+   
+   // autosave - integer, update root file every N kilobytes
+   virtual void SetI(std::string param, int value);
+ 
+-  virtual Processor::Result DSEvent(DS::Root *ds);
+-
+-  virtual bool OpenFile(std::string theFilename);
+-  virtual std::string GetFilename() { return fFileName; };
+-
+ protected:
+-  DS::PMTBundle PackPMT(DS::PMTUnCal *pmt, unsigned int gtid);
+-  DS::PackedEvent* PackHeader(DS::EV *ev);
+-  DS::PackedEvent* PackEvent(DS::EV *ev);
+-  void MakeRunHeader(DS::Root *ds);
+-  void MakeAVHeader(DS::Run *run);
+-  void MakeManipHeader(DS::Run *run);
+-  void MakeEventHeader(DS::Root *ds);
+-  void MakeEPEDHeader(DS::EPEDInfo *eped);
+-  void MakeTRIGHeader(DS::TRIGInfo *trig);
+-  void Die(std::string message, int flag_err, int info1, int info2, int return_code=1);
+-  
+-  char fPackVer;
+-  int fRunID;
+   int fEVID;
+-  int fSubRunID;
+-  ULong64_t fRunType;
+-  char fMCFlag;
+-  char fDataType;
++  int fAutosave;
+ 
+-  std::string fDefaultFileName;
+-  std::string fFileName;
+   TFile *fFile;
+   TTree *fTree;
+-  DS::PackedEvent *branchPackedEv;
+-  DS::PackedRec *branchPackedRec;
+-  //DS::PackedEvent fPackedEV;
+-  Int_t fAutosave;
+-  BitManip *fBits;
++  DS::PackedRec *fBranchRec;
+ };
+ 
+ } // namespace RAT
+ 
+ #endif
++
+Index: src/io/Pack.cc
+===================================================================
+--- src/io/Pack.cc	(revision 0)
++++ src/io/Pack.cc	(revision 0)
+@@ -0,0 +1,308 @@
++#include <RAT/Pack.hh>
++#include <RAT/Log.hh>
++#include <RAT/BitManip.hh>
++#include <RAT/DS/Root.hh>
++#include <RAT/DS/PackedEvent.hh>
++#include <RAT/DS/RunStore.hh>
++#include <RAT/DS/Run.hh>
++#include <RAT/DS/HeaderInfo.hh>
++
++namespace RAT {
++
++DS::PackedRec* Pack::MakeTRIGHeader(DS::Root *ds)
++{
++  DS::TRIGInfo *trig = ds->GetHeaderInfo()->GetTRIGInfo();
++  DS::TRIG* rec = new DS::TRIG();
++
++  rec->TrigMask = trig->GetTrigMask();
++  rec->PulserRate = trig->GetPulserRate();
++  rec->MTC_CSR = trig->GetMTC_CSR();
++  rec->LockoutWidth = trig->GetLockoutWidth();
++  rec->PrescaleFreq = trig->GetPrescaleFreq();
++  rec->EventID = trig->GetEventID();
++  rec->RunID = trig->GetRunID();
++  
++  int ntrigthold = trig->GetNTrigTHold();
++  int ntrigzero = trig->GetNTrigZeroOffset();
++
++  for(int i=0; i<10; i++) {
++    rec->Threshold[i] = 0;
++    rec->TrigZeroOffset[i] = 0;
++    if (i < ntrigthold)
++      rec->Threshold[i] = trig->GetTrigTHold(i);
++    if (i < ntrigzero)
++      rec->TrigZeroOffset[i] = trig->GetTrigZeroOffset(i);
++  }
++
++  DS::PackedRec* PackedRec = new DS::PackedRec();
++  PackedRec->RecordType = 5;
++  PackedRec->Rec = rec;
++
++  return PackedRec;
++}
++
++DS::PackedRec* Pack::MakeEPEDHeader(DS::Root *ds)
++{
++  DS::EPEDInfo* eped = ds->GetHeaderInfo()->GetEPEDInfo();
++  DS::EPED* rec = new DS::EPED();
++
++  rec->GTDelayCoarse = eped->GetGTDelayCoarse();
++  rec->GTDelayFine = eped->GetGTDelayFine();
++  rec->QPedAmp = eped->GetQPedAmp();
++  rec->QPedWidth = eped->GetQPedWidth();
++  rec->PatternID = eped->GetPatternID();
++  rec->CalType = eped->GetCalType();
++  rec->EventID = eped->GetEventID();
++  rec->RunID = eped->GetRunID();
++
++  DS::PackedRec* PackedRec = new DS::PackedRec();
++  PackedRec->RecordType = 6;
++  PackedRec->Rec = rec;
++  
++  return PackedRec;
++}
++
++DS::PackedRec* Pack::MakeRunHeader(DS::Root *ds)
++{
++  DS::Run* run = RAT::DS::RunStore::GetRun(ds);
++  DS::RHDR* rec = new DS::RHDR();
++
++  rec->Date = run->GetDate();
++  rec->Time = run->GetTime();
++  rec->DAQVer = run->GetDAQVer();
++  rec->CalibTrialID = run->GetCalibTrialID();
++  rec->SrcMask = run->GetSrcMask();
++  rec->RunMask = run->GetRunType();
++  rec->CrateMask = run->GetCrateMask();
++  rec->FirstEventID = run->GetFirstEventID();
++  rec->ValidEventID = run->GetValidEventID();
++  rec->RunID = run->GetRunID();
++
++  DS::PackedRec* PackedRec = new DS::PackedRec();
++  PackedRec->RecordType = 2;
++  PackedRec->Rec = rec;
++
++  return PackedRec;
++}
++
++DS::PackedRec* Pack::MakeAVHeader(DS::Root *ds)
++{
++  DS::AVStat* avstat = RAT::DS::RunStore::GetRun(ds)->GetAVStat();
++  DS::CAAC* rec = new DS::CAAC();
++
++  for (int i=0; i<3; i++) {
++    rec->AVPos[i] = avstat->GetPosition(i);
++    rec->AVRoll[i] = avstat->GetRoll(i);
++  }
++
++  for (int i=0; i<7; i++) {
++    rec->AVRopeLength[i] = avstat->GetRopeLength(i);
++  }
++
++  DS::PackedRec* PackedRec = new DS::PackedRec();
++  PackedRec->RecordType = 3;
++  PackedRec->Rec = rec;
++
++  return PackedRec;
++}
++
++DS::PackedRec* Pack::MakeManipHeader(DS::Root *ds)
++{
++  DS::ManipStat* manipstat = RAT::DS::RunStore::GetRun(ds)->GetManipStat();
++  DS::CAST *rec = new DS::CAST();
++
++  for (int i=0; i<3; i++) {
++    rec->ManipPos[i] = manipstat->GetManipPos(i);
++    rec->ManipDest[i] = manipstat->GetManipDest(i);
++    rec->SrcPosUncert2[i] = manipstat->GetSrcPosUnc(i);
++  }
++
++  for (int i=0; i<manipstat->GetNRopes(); i++) {
++    rec->RopeID.push_back(manipstat->GetRopeID(i));
++    rec->RopeLen.push_back(manipstat->GetRopeLength(i));
++    rec->RopeTargLen.push_back(manipstat->GetRopeTargLength(i));
++    rec->RopeVel.push_back(manipstat->GetRopeVelocity(i));
++    rec->RopeTens.push_back(manipstat->GetRopeTension(i));
++    rec->RopeErr.push_back(manipstat->GetRopeErr(i));
++  }
++
++  rec->SourceID = manipstat->GetSrcID();
++  rec->SourceStat = manipstat->GetSrcStatus();
++  rec->NRopes = manipstat->GetNRopes();
++  rec->SrcPosUncert1 = manipstat->GetSrcPosUnc();
++  rec->LBallOrient = manipstat->GetLaserballOrient();
++
++  DS::PackedRec *PackedRec = new DS::PackedRec();
++  PackedRec->RecordType = 4;
++  PackedRec->Rec = rec;
++
++  return PackedRec;
++}
++
++DS::PackedRec* Pack::PackEvent(DS::Root *ds, int iev)
++{
++  DS::EV* ev = ds->GetEV(iev);
++  DS::PackedEvent* PackedEV = new DS::PackedEvent();
++
++  // Get event level info
++  unsigned trigError = ev->GetTrigError();
++  unsigned trigType = ev->GetTrigType();
++  unsigned eventID = ev->GetEventID();
++  unsigned long clockCount50 = ev->GetClockCount50();
++  unsigned long clockCount10 = ev->GetClockCount10();
++  char clockStat10 = ev->GetClockStat10();
++  int nhits = ev->GetNhits();
++  int npmtall = ev->GetPMTAllUnCalCount();
++
++  // Init header words
++  std::vector<int> header(6, 0);
++
++  // Check some lengths:
++  Log::Assert(BitManip::CheckLength(nhits, 16), "Pack: nhit has wrong length");
++  Log::Assert(BitManip::CheckLength(clockStat10, 4), "Pack: clockStat10 has wrong length");
++  Log::Assert(BitManip::CheckLength(eventID, 24), "Pack: GTID has wrong length");
++  Log::Assert(BitManip::CheckLength(trigError, 15), "Pack: TrigError has wrong length");
++
++  // Pack header words
++  unsigned clock50part1 = (int) BitManip::GetBits((ULong64_t) clockCount50, 0, 11);
++  unsigned clock50part2 = (int) BitManip::GetBits((ULong64_t) clockCount50, 11, 32);
++  unsigned clock10part1 = (int) BitManip::GetBits((ULong64_t) clockCount10, 0, 32);
++  unsigned clock10part2 = (int) BitManip::GetBits((ULong64_t) clockCount10, 32, 21);
++
++  Log::Assert(BitManip::CheckLength(clock50part1, 11), "Pack: clock50part1 has wrong length");
++  Log::Assert(BitManip::CheckLength(clock50part2, 32), "Pack: clock50part2 has wrong length");
++  Log::Assert(BitManip::CheckLength(clock10part1, 32), "Pack: clock10part1 has wrong length");
++  Log::Assert(BitManip::CheckLength(clock10part2, 21), "Pack: clock10part2 has wrong length");
++ 
++  unsigned long p1 = clock10part1;
++  unsigned long p2 = clock10part2;
++  unsigned long test10 = (p2<<32) + p1;
++  if (test10 != clockCount10)
++    warn << dformat("Pack: test10 (%lu) != clockCount10 (%lu)\n", test10, clockCount10);
++  
++  header[0] = clock10part1; // 32 bits of 10MHz clock
++  header[1] = clock10part2; // 21 bits of ""
++  header[1] = BitManip::SetBits(header[1], 21, clock50part1); // 11 bits of 50MHz clock 
++  header[2] = clock50part2; // 32 bits of ""
++
++  unsigned int trig1 = BitManip::GetBits(trigType, 0, 8);
++  unsigned int trig2 = BitManip::GetBits(trigType, 8, 19);
++  Log::Assert(BitManip::CheckLength(trigType, 27), "Pack: TrigWord has wrong length");
++  Log::Assert(BitManip::CheckLength(trig1, 8), "Pack: TrigWordP1 has wrong length");
++  Log::Assert(BitManip::CheckLength(trig2, 19), "Pack: TrigWordP2 has wrong length");
++  
++  header[3] = eventID; // 24 bits of GTID
++  header[3] = BitManip::SetBits(header[3], 24, trig1); // 8 bits of Trigger word
++  header[4] = trig2; // 19 bits of Trigger word
++  header[5] = BitManip::SetBits(header[5], 17, trigError); // 15 bits of TrigError word
++  
++  for (int i=0; i<6; i++)
++    PackedEV->MTCInfo[i] = header[i];
++
++  PackedEV->PackVer = fPackVer;
++  PackedEV->EVOrder = eventID; //FIXME
++  PackedEV->NHits = nhits;
++  PackedEV->ClockStat10 = clockStat10;
++
++  DS::Run* run = RAT::DS::RunStore::GetRun(ds);
++  PackedEV->DataType = run->GetDataType();
++  PackedEV->MCFlag = run->GetMCFlag();
++  PackedEV->RunMask = run->GetRunType();
++  PackedEV->RunID = run->GetRunID();
++  PackedEV->SubRunID = run->GetSubRunID();
++
++  // Set number of PMT bundles
++  PackedEV->PMTBundles.resize(npmtall);
++  
++  // Pack each bundle
++  for (int inh=0; inh<npmtall; inh++) {
++    DS::PMTUnCal *pmt = ev->GetPMTAllUnCal(inh);
++    PackedEV->PMTBundles[inh] = Pack::MakePMTBundle(pmt, eventID);
++  }
++
++  DS::PackedRec* PackedRec = new DS::PackedRec();
++  PackedRec->RecordType = 1;
++  PackedRec->Rec = PackedEV;
++
++  return PackedRec;
++}
++
++// Pack the PMT Bundles
++DS::PMTBundle Pack::MakePMTBundle(DS::PMTUnCal* pmt, unsigned gtid)
++{
++  DS::PMTBundle bundle;
++
++  // Get PMT level info
++  int lcn = pmt->GetID();
++  int icrate = BitManip::GetCrate(lcn);
++  int icard = BitManip::GetCard(lcn);
++  int ichan = BitManip::GetChannel(lcn);
++  int cell = pmt->GetCellID();
++
++  // Order of flags in chanFlags, from least sig bit upwards:
++  // CGT ES16, CGT ES24, Missed Count, NC/CC Flag, LGISELECT, CMOS ES16
++  char chanFlags = pmt->GetChanFlags();
++
++  // Get uncalibrated charges and time
++  unsigned short qhs = pmt->GetsQHS();
++  unsigned short qhl = pmt->GetsQHL();
++  unsigned short qlx = pmt->GetsQLX();
++  unsigned short tac = pmt->GetsPMTt();
++  
++  // Flip final bit of Q,T to mimic the ADCs
++  qhs = BitManip::FlipBit(qhs,11);
++  qhl = BitManip::FlipBit(qhl,11);
++  qlx = BitManip::FlipBit(qlx,11);
++  tac = BitManip::FlipBit(tac,11);
++
++  // Check some lengths
++  Log::Assert(BitManip::CheckLength(qlx, 12), "Pack: QLX has wrong length");
++  Log::Assert(BitManip::CheckLength(qhs,12), "Pack: QHS has wrong length");
++  Log::Assert(BitManip::CheckLength(qhl,12), "Pack: QH has wrong lengthL");
++  Log::Assert(BitManip::CheckLength(tac,12), "Pack: TAC has wrong length");
++  Log::Assert(BitManip::CheckLength(cell,4), "Pack: CellID has wrong length");
++  Log::Assert(BitManip::CheckLength(icrate,5), "Pack: Crate# has wrong length");
++  Log::Assert(BitManip::CheckLength(icard,4), "Pack: Card# has wrong length");
++  Log::Assert(BitManip::CheckLength(ichan,5), "Pack: Channel# has wrong length");
++  
++  // Pack this bundle
++  // First word
++  int word1 = BitManip::GetBits(gtid, 0, 16);          // 16 bits of GTID
++  word1 = BitManip::SetBits(word1, 16, ichan);     // 5 bits of ichan
++  word1 = BitManip::SetBits(word1, 21, icrate);    // 5 bits of icrate
++  word1 = BitManip::SetBits(word1, 26, icard);     // 4 bits of icard
++  if (BitManip::TestBit(chanFlags,0))              // 1 bit for CGT ES16
++    word1 = BitManip::SetBit(word1, 30);
++  if (BitManip::TestBit(chanFlags,1))              // 1 bit for CGT ES24
++    word1 = BitManip::SetBit(word1, 31);
++  
++  // Second word
++  int word2 = qlx;                                     // 12 bits for QLX
++  word2 = BitManip::SetBits(word2, 12, cell);      // 4 bits for cellID
++  word2 = BitManip::SetBits(word2, 16, qhs);       // 12 bits for QHS
++  if (BitManip::TestBit(chanFlags,2))              // 1 bit for `Missed count'
++    word2 = BitManip::SetBit(word2, 28);
++  if (BitManip::TestBit(chanFlags,3))              // 1 bit for NC/CC
++    word2 = BitManip::SetBit(word2, 29);
++  if (BitManip::TestBit(chanFlags,4))              // 1 bit for LGISelect
++    word2 = BitManip::SetBit(word2, 30);
++  if (BitManip::TestBit(chanFlags,5))              // 1 bit for CMOS ES16
++    word2 = BitManip::SetBit(word2, 31);
++  
++  // Third word
++  int word3 = qhl;                                     // 12 bits for QHL
++  int gtidpart1 = BitManip::GetBits(gtid, 16, 4);
++  int gtidpart2 = BitManip::GetBits(gtid, 20, 4);
++  word3 = BitManip::SetBits(word3, 12, gtidpart1); // 4 bits of GTID
++  word3 = BitManip::SetBits(word3, 16, tac);       // 12 bits for TAC
++  word3 = BitManip::SetBits(word3, 28, gtidpart2); // 4 bits of GTID
++
++  bundle.Word[0] = word1;
++  bundle.Word[1] = word2;
++  bundle.Word[2] = word3;
++
++  return bundle;
++}
++
++} // namespace RAT
++
+Index: src/io/DispatchEvents.cc
+===================================================================
+--- src/io/DispatchEvents.cc	(revision 0)
++++ src/io/DispatchEvents.cc	(revision 0)
+@@ -0,0 +1,89 @@
++#include <RAT/DispatchEvents.hh>
++#include <RAT/Pack.hh>
++#include <RAT/Processor.hh>
++#include <RAT/Log.hh>
++#include <RAT/DS/PackedEvent.hh>
++#include <RAT/DS/RunStore.hh>
++#include <RAT/DS/Run.hh>
++#include <RAT/DS/HeaderInfo.hh>
++
++#include <G4UImessenger.hh>
++
++namespace RAT {
++
++DispatchEvents::DispatchEvents() : Processor("DispatchEvents")
++{
++  serv = 0x0;
++  fSentRunHeaders = false;
++}
++
++DispatchEvents::~DispatchEvents()
++{
++  delete serv;
++}
++
++void DispatchEvents::SetS(std::string param, std::string value)
++{
++  if (param == "address") {
++    info << "DispatchEvents: Publishing to address " << value << newline;
++    serv = new AvalancheServer(value);
++    Log::Assert(serv, "DispatchEvents: Unable to open socket");
++  }
++}
++
++Processor::Result DispatchEvents::DSEvent(DS::Root *ds)
++{
++  Log::Assert(serv, "DispatchEvents: Output address required");
++  DS::PackedRec* rec;
++
++  // If we're on the first event, fill the initial header information
++  if (!fSentRunHeaders) {
++    rec = Pack::MakeRunHeader(ds);
++    serv->sendObject(rec);
++    delete rec;
++  
++    // If AVStat / ManipStat are filled, make CAAC/CAST headers:
++    DS::Run* run = RAT::DS::RunStore::GetRun(ds);
++
++    if (run->ExistManipStat()) {
++      rec = Pack::MakeManipHeader(ds);
++      serv->sendObject(rec);
++      delete rec;
++    }
++
++    if (run->ExistAVStat()) {
++      rec = Pack::MakeAVHeader(ds);
++      serv->sendObject(rec);
++      delete rec;
++    }
++
++    fSentRunHeaders = true;
++  }
++  
++  // If this ds event has event-level info attached, make more headers
++  if (ds->ExistHeaderInfo()) {
++    if (ds->GetHeaderInfo()->ExistTRIGInfo()) {
++      rec = Pack::MakeTRIGHeader(ds);
++      serv->sendObject(rec);
++      delete rec;
++    }
++
++    if (ds->GetHeaderInfo()->ExistEPEDInfo()) {
++      rec = Pack::MakeEPEDHeader(ds);
++      serv->sendObject(rec);
++      delete rec;
++    }
++  }
++
++  // Loop over triggered events
++  for (int iev=0; iev<ds->GetEVCount(); iev++) {
++    rec = Pack::PackEvent(ds, iev);
++    serv->sendObject(rec);
++    delete rec;
++  }
++
++  return Processor::OK;
++}
++
++} // namespace RAT
++
+Index: src/io/Pack.hh
+===================================================================
+--- src/io/Pack.hh	(revision 0)
++++ src/io/Pack.hh	(revision 0)
+@@ -0,0 +1,31 @@
++#ifndef __RAT_Pack___
++#define __RAT_Pack___
++
++#include <RAT/DS/Root.hh>
++#include <RAT/DS/PackedEvent.hh>
++
++namespace RAT {
++
++class Pack {
++public:
++  Pack() {};
++  virtual ~Pack() {};
++
++  static DS::PackedRec* MakeTRIGHeader(DS::Root* ds);
++  static DS::PackedRec* MakeEPEDHeader(DS::Root* ds);
++  static DS::PackedRec* MakeRunHeader(DS::Root *ds); 
++  static DS::PackedRec* MakeAVHeader(DS::Root *ds);
++  static DS::PackedRec* MakeManipHeader(DS::Root *ds);
++  static DS::PackedRec* MakeEventHeader(DS::Root *ds);
++  static DS::PackedRec* PackEvent(DS::Root* ds, int iev);
++
++  static DS::PMTBundle MakePMTBundle(DS::PMTUnCal *pmt, unsigned int gtid);
++
++protected:
++  static const int fPackVer = 0;
++};
++
++} // namespace RAT
++
++#endif
++
+Index: config/EXTERNAL.scons
+===================================================================
+--- config/EXTERNAL.scons	(revision 634)
++++ config/EXTERNAL.scons	(working copy)
+@@ -38,8 +38,12 @@
+ ext_deps['bz2']['path'] = None
+ ext_deps['bz2']['libs'] = "bz2" #shot form for -lbz2
+ 
++# ZeroMQ
++ext_deps['zmq'] = {}
++ext_deps['zmq']['user'] = True
++ext_deps['zmq']['path'] = None
++ext_deps['zmq']['libs'] = "zmq" 
+ 
+-
+ ###################################################################
+ # DO NOT EDIT BELOW THIS POINT UNLESS YOU KNOW WHAT YOU ARE DOING #
+ ###################################################################
