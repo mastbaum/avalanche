@@ -4,7 +4,7 @@ Avalanche C++ Library
 AvalancheServer
 ---------------
 
-=== Creating a Server ===
+### Creating a Server ###
 
     AvalancheServer::AvalancheServer(std::string _addr)
 
@@ -14,7 +14,7 @@ Example:
 
 This will publish objects on localhost port 7777 via TCP.
 
-=== Sending an Object ===
+### Sending an Object ###
 
     int AvalancheServer::sendObject(TObject* o)
 

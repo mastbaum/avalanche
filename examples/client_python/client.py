@@ -13,7 +13,7 @@ if __name__ == '__main__':
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
     socket.setsockopt(zmq.SUBSCRIBE, '')
-    socket.bind(address)
+    socket.connect(address)
 
     while True:
         msg = socket.recv(copy=False)

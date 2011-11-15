@@ -15,7 +15,7 @@ int main(int argc, char *argv[])
     zmq::context_t context(1);
     zmq::socket_t subscriber(context, ZMQ_SUB);
     subscriber.setsockopt(ZMQ_SUBSCRIBE, "", 0); //filter, strlen (filter));
-    subscriber.bind("tcp://*:5024");
+    subscriber.connect("tcp://*:5024");
 
     while (1) {
         // listen for incoming messages

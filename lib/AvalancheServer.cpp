@@ -11,7 +11,7 @@ AvalancheServer::AvalancheServer(std::string _addr) {
     address = _addr;
     context = new zmq::context_t(1);
     socket = new zmq::socket_t(*context, ZMQ_PUB);
-    socket->connect(address.c_str());
+    socket->bind(address.c_str());
 }
 
 int AvalancheServer::sendObject(TObject* o) {
