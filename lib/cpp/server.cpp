@@ -4,9 +4,11 @@
 #include <stdlib.h>
 #include <string>
 
-#include "AvalancheServer.hpp"
+#include "avalanche.hpp"
 
-AvalancheServer::AvalancheServer(std::string _addr) {
+namespace avalanche {
+
+server::server(std::string _addr) {
     // set up zeromq sockets
     address = _addr;
     context = new zmq::context_t(1);
@@ -14,7 +16,7 @@ AvalancheServer::AvalancheServer(std::string _addr) {
     socket->bind(address.c_str());
 }
 
-int AvalancheServer::sendObject(TObject* o) {
+int server::sendObject(TObject* o) {
     // use TBufferFile for TObject serialization
     TBufferFile bf(TBuffer::kWrite);
     bf.Reset();
@@ -35,4 +37,6 @@ int AvalancheServer::sendObject(TObject* o) {
 
     return 0;
 }
+
+} // namespace avalanche
 
