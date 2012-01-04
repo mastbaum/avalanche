@@ -15,7 +15,7 @@
 #define __RAT_DispatchEvents___
 
 #include <RAT/Processor.hh>
-#include <RAT/AvalancheServer.hpp>
+#include <RAT/avalanche.hpp>
 
 namespace RAT {
 
@@ -23,7 +23,7 @@ class DispatchEvents : public Processor {
 public:
   DispatchEvents();
   virtual ~DispatchEvents();
-  virtual Processor::Result DSEvent(DS::Root *ds);
+  virtual Processor::Result DSEvent(DS::Root* ds);
 
   // address - string, name of the socket for output
   // e.g. "tcp://localhost:7777"
@@ -32,7 +32,7 @@ public:
 protected:
   bool fSentRunHeaders;
   std::string address;
-  AvalancheServer *serv;
+  avalanche::server* serv;
 };
 
 } // namespace RAT

@@ -1,7 +1,9 @@
-#include <RAT/DispatchEvents.hh>
-#include <RAT/Pack.hh>
 #include <RAT/Processor.hh>
 #include <RAT/Log.hh>
+
+#ifdef __ZMQ
+#include <RAT/DispatchEvents.hh>
+#include <RAT/Pack.hh>
 #include <RAT/DS/PackedEvent.hh>
 #include <RAT/DS/RunStore.hh>
 #include <RAT/DS/Run.hh>
@@ -26,7 +28,7 @@ void DispatchEvents::SetS(std::string param, std::string value)
 {
   if (param == "address") {
     info << "DispatchEvents: Publishing to address " << value << newline;
-    serv = new AvalancheServer(value);
+    serv = new avalanche::server(value);
     Log::Assert(serv, "DispatchEvents: Unable to open socket");
   }
 }
@@ -86,4 +88,23 @@ Processor::Result DispatchEvents::DSEvent(DS::Root *ds)
 }
 
 } // namespace RAT
+
+#else
+namespace RAT {
+
+class DispatchEvents : public Processor {
+public:
+  DispatchEvents();
+  virtual ~DispatchEvents() {};
+  virtual Processor::Result DSEvent(DS::Root* /*ds*/) {
+    return Processor::OK;
+  }
+};
+
+DispatchEvents::DispatchEvents() : Processor("DispatchEvents") {
+  Log::Die("DispatchEvents: Dispatcher requires ZeroMQ support (libzmq)");
+}
+
+} // namespace RAT
+#endif // __ZMQ
 

@@ -6,24 +6,34 @@
 
 namespace RAT {
 
-class Pack {
-public:
-  Pack() {};
-  virtual ~Pack() {};
+namespace Pack {
+  // version number
+  const int packVer = 0;
 
-  static DS::PackedRec* MakeTRIGHeader(DS::Root* ds);
-  static DS::PackedRec* MakeEPEDHeader(DS::Root* ds);
-  static DS::PackedRec* MakeRunHeader(DS::Root *ds); 
-  static DS::PackedRec* MakeAVHeader(DS::Root *ds);
-  static DS::PackedRec* MakeManipHeader(DS::Root *ds);
-  static DS::PackedRec* MakeEventHeader(DS::Root *ds);
-  static DS::PackedRec* PackEvent(DS::Root* ds, int iev);
+  // record types
+  namespace RecordType {
+    enum { NONE, EVENT, RHDR, CAAC, CAST, TRIG, EPED };
+  }
 
-  static DS::PMTBundle MakePMTBundle(DS::PMTUnCal *pmt, unsigned int gtid);
+  // packing functions map full to packed DS
+  DS::PackedRec* MakeTRIGHeader(DS::Root* ds);
+  DS::PackedRec* MakeEPEDHeader(DS::Root* ds);
+  DS::PackedRec* MakeRunHeader(DS::Root* ds); 
+  DS::PackedRec* MakeAVHeader(DS::Root* ds);
+  DS::PackedRec* MakeManipHeader(DS::Root* ds);
+  DS::PackedRec* PackEvent(DS::Root* ds, int iev);
+  DS::PMTBundle MakePMTBundle(DS::PMTUnCal* pmt, unsigned int gtid);
 
-protected:
-  static const int fPackVer = 0;
-};
+  // unpacking functions map packed to full DS
+  DS::Root* UnpackEvent(DS::PackedEvent* pev, DS::TRIGInfo* trig, DS::EPEDInfo* eped);
+  DS::Run* UnpackRHDR(DS::RHDR* rhdr);
+  DS::AVStat* UnpackCAAC(DS::CAAC* caac);
+  DS::ManipStat* UnpackCAST(DS::CAST* cast);
+  DS::TRIGInfo* UnpackTRIG(DS::TRIG* trig);
+  DS::EPEDInfo* UnpackEPED(DS::EPED* eped);
+  DS::PMTUnCal* UnpackPMT(DS::PMTBundle* bundle);
+
+} // namespace Pack
 
 } // namespace RAT
 
