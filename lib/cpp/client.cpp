@@ -20,22 +20,32 @@ client::client(std::string _addr) {
 
 void* client::recvObject(TClass* cls, int flags) {
     zmq::message_t message;
-    socket->recv(&message, flags);
 
-    // TBufferFile used for TObject serialization
-    TBufferFile bf(TBuffer::kRead, message.size(), message.data(), false);
-    void* bfo = bf.ReadObjectAny(cls);
+    try {
+        socket->recv(&message, flags);
+        if (message.size() == 0)
+            return NULL;
 
-    // make a copy, since the buffer goes away
-    void* o = NULL;
-    if (bfo) {
-        o = cls->New();
-        memcpy(o, bfo, cls->Size());
+        // TBufferFile used for TObject serialization
+        TBufferFile bf(TBuffer::kRead, message.size(), message.data(), false);
+        void* bfo = bf.ReadObjectAny(cls);
+
+        // make a copy, since the buffer goes away
+        void* o = NULL;
+        if (bfo) {
+            o = cls->New();
+            memcpy(o, bfo, cls->Size());
+        }
+
+        return o;
     }
-
-    return o;
+    catch (zmq::error_t e) {
+        if (e.num() == EAGAIN) // no data in buffer
+            return NULL;
+        else
+            throw e;
+    }
 }
 
-}
-// namespace avalanche
+} // namespace avalanche
 
