@@ -62,7 +62,10 @@ bool InDispatchProducer::ReadEvents(G4String address)
   // process records as they are received
   while (!SignalHandler::IsTermRequested()) {
     try {
-      RAT::DS::PackedRec* rec = (RAT::DS::PackedRec*) client->recvObject(RAT::DS::PackedRec::Class());
+      RAT::DS::PackedRec* rec = NULL;
+      do {
+        rec = (RAT::DS::PackedRec*) client->recvObject(RAT::DS::PackedRec::Class(), ZMQ_NOBLOCK);
+      } while(rec == NULL);
 
       detail << "InDispatchProducer: Received record of type " << rec->RecordType << newline;
  

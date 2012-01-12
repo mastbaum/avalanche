@@ -11,11 +11,20 @@ namespace avalanche {
 
 client::client(std::string _addr) {
     // set up zeromq sockets
-    address = _addr;
     context = new zmq::context_t(1);
     socket = new zmq::socket_t(*context, ZMQ_SUB);
     socket->setsockopt(ZMQ_SUBSCRIBE, "", 0);
-    socket->connect(address.c_str());
+    addServer(_addr);
+}
+
+client::~client() {
+    delete socket;
+    delete context;
+}
+
+void client::addServer(std::string _addr) {
+    serv_addr.push_back(_addr);
+    socket->connect(_addr.c_str());
 }
 
 void* client::recvObject(TClass* cls, int flags) {

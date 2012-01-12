@@ -1,5 +1,9 @@
 #include <string>
+#include <vector>
 #include <zmq.hpp>
+
+#ifndef __AVALANCHE_H__
+#define __AVALANCHE_H__
 
 class TObject;
 class TClass;
@@ -22,14 +26,17 @@ class server
 class client {
     public:
         client(std::string _addr);
-        ~client() {};
+        ~client();
+	void addServer(std::string _addr);
 	void* recvObject(TClass* cls, int flags=0);
 
     protected:
-        std::string address;
+        std::vector<std::string> serv_addr;
         zmq::context_t* context;
         zmq::socket_t* socket;
 };
 
 } // namespace avalanche
+
+#endif
 

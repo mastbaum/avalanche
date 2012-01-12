@@ -797,8 +797,9 @@ Index: src/io/avalanche.hpp
 ===================================================================
 --- src/io/avalanche.hpp	(revision 0)
 +++ src/io/avalanche.hpp	(revision 0)
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,37 @@
 +#include <string>
++#include <vector>
 +#include <zmq.hpp>
 +
 +class TObject;
@@ -822,11 +823,12 @@ Index: src/io/avalanche.hpp
 +class client {
 +    public:
 +        client(std::string _addr);
-+        ~client() {};
++        ~client();
++	void addServer(std::string _addr);
 +	void* recvObject(TClass* cls, int flags=0);
 +
 +    protected:
-+        std::string address;
++        std::vector<std::string> serv_addr;
 +        zmq::context_t* context;
 +        zmq::socket_t* socket;
 +};
@@ -2587,7 +2589,7 @@ Index: src/io/InDispatchProducer.cc
 ===================================================================
 --- src/io/InDispatchProducer.cc	(revision 0)
 +++ src/io/InDispatchProducer.cc	(revision 0)
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,176 @@
 +////////////////////////////////////////////////////////////////////
 +// Last svn revision: $Id: UnPackEvents.cc 628 2011-10-17 16:53:43Z orebi $ 
 +////////////////////////////////////////////////////////////////////
@@ -2652,7 +2654,10 @@ Index: src/io/InDispatchProducer.cc
 +  // process records as they are received
 +  while (!SignalHandler::IsTermRequested()) {
 +    try {
-+      RAT::DS::PackedRec* rec = (RAT::DS::PackedRec*) client->recvObject(RAT::DS::PackedRec::Class());
++      RAT::DS::PackedRec* rec = NULL;
++      do {
++        rec = (RAT::DS::PackedRec*) client->recvObject(RAT::DS::PackedRec::Class(), ZMQ_NOBLOCK);
++      } while(rec == NULL);
 +
 +      detail << "InDispatchProducer: Received record of type " << rec->RecordType << newline;
 + 
@@ -2891,12 +2896,14 @@ Index: config/RAT.scons
  #  scons debug=1
  #  scons opt=1
  #
-@@ -129,6 +126,12 @@
+@@ -129,6 +126,14 @@
  else:
      debugdefault = 0
  
 +zmq = int(ARGUMENTS.get('zmq', 1)) == 1
-+if zmq: 
++if zmq:
++    for key in os.environ['LIBPATH'].split(':'):
++        env.Append(LIBPATH=key)
 +    if Configure(env).CheckLib('avalanche'):
 +        env.Append(LIBS='avalanche')
 +        env.Append(CPPFLAGS='-D__ZMQ')
