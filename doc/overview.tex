@@ -98,6 +98,8 @@ int main(int argc, char* argv[]) {
 
 First, we set up the client by giving it a server address to connect to. In this example, we also connect to one more server. You may connect to an unlimited number of streams; the packets received are interleaved, as if they arrived from one source. Next, we receive ROOT objects with {\tt recvObject}. The class must be specified for the deserialization step. Now we are ready to operate on the data. In this example we just print the record type; a real client would at this point cast the member {\tt Rec} object to the correct type, extract data, and perform some operations.
 
+Note that {\tt recvObject} is blocking by default (it will wait until data is received). To use non-blocking I/O, provide the {\tt ZMQ\_NOBLOCK} flag as the second argument. When used in this mode, {\tt recvObject} will return {\tt NULL} when no data is available.
+
 \subsection{Python}
 The {\tt avalanche} Python package in {\tt lib/python} provides a dispatcher client {\tt avalanche.Client}. To install this package on your system, run {\tt \$ python setup.py install}.
 
@@ -126,6 +128,8 @@ if __name__ == '__main__':
 First, we set up the client by giving it a server address to connect to. In this example, we also connect to one more server. You may connect to an unlimited number of streams; the packets received are interleaved, as if they arrived from one source. Next, we receive ROOT objects with {\tt recv\_object}. The class must be specified for the deserialization step. Now we are ready to operate on the data. In this example we just print the record type; a real client would at this point cast the member {\tt Rec} object to the correct type, extract data, and perform some operations.
 
 Note that in Python, there is no need to cast the object returned by {\tt recv\_object}, as this is taken care of by PyROOT.
+
+As above, {\tt recv\_object} is blocking by default (waits until data is available). To use non-blocking I/O, provide the {\tt flags=zmq.NOBLOCK} argument. When used in this mode, {\tt recv\_object} will return {\tt None} when no data is available.
 
 \subsection{Other Languages}
 
