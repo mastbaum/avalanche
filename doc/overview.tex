@@ -14,138 +14,126 @@ The ``dispatcher'' is the server software responsible for providing a stream of 
 \item[Compatibility] The dispatched data stream must be reasonably language-agnostic, since the language of the client software is unknown.
 \end{description}
 
-An obvious platform choice would be ROOT's network I/O classes (TPSocket, etc.). However, the next-generation socket library ZeroMQ\footnote{\href{http://www.zeromq.org}{http://www.zeromq.org}} provides a superior alternative. ZeroMQ is naturally asynchronous, natively supports fan-out, and implementations are typically faster than UNIX sockets. ZeroMQ's fan-out allows clients to ``subscribe'' to a stream, optionally applying a filter (e.g. only events, no run headers). Bindings exist for all major languages.
+An obvious platform choice would be ROOT's network I/O classes ({\tt TPSocket}, etc.). However, the next-generation socket library ZeroMQ\footnote{\href{http://www.zeromq.org}{http://www.zeromq.org}} provides a superior alternative. ZeroMQ is naturally asynchronous, natively supports fan-out, and implementations are typically faster than UNIX sockets. ZeroMQ's fan-out allows clients to ``subscribe'' to a stream, optionally applying a filter (e.g. only events, no run headers). Bindings exist for all major languages.
 
 \section{Data Format}
 It has been decided that the ``packed'' events coming from the event builder will be in a ROOT format, with a structure developed by G. D. Orebi Gann and J. Kaspar. The packed format preserves the ``raw'' data structures from the detector front-end: for example, charge and time data is stored in 96-bit PMT bundles. This is in contrast the `full' or `unpacked' data structure used in RAT, where values are broken into separate, histogrammable fields.
 
-The packed data is essentially a stream of TObjects, which may be event data, event-level headers, or run-level headers. For convenience of storage these are written to a {\tt TTree}. Since {\tt TTree}s are homogeneous lists, various data types must inherit from the same generic superclass to be stored in the tree. The data type must also be stored, so that objects can be properly re-cast when read back. The packed format {\tt TTree} stores {\tt RAT::DS::PackedRec} objects, which in turn contain a single {\tt GenericRec} and an integer {\tt RecordType}. All data types (events, headers) inherit from a class {\tt GenericRec}, which is empty and exists only to support this polymorphism.
+The packed data is essentially a stream of {\tt TObjects}, which may be event data, event-level headers, or run-level headers. For convenience of storage these are written to a {\tt TTree}. Since {\tt TTree}s are homogeneous lists, various data types must inherit from the same generic superclass to be stored in the tree. The data type must also be stored, so that objects can be properly re-cast when read back. The packed format {\tt TTree} stores {\tt RAT::DS::PackedRec} objects, which in turn contain a single {\tt GenericRec} and an integer {\tt RecordType}. All data types (events, headers) inherit from a class {\tt GenericRec}, which is empty and exists only to support this polymorphism.
 
 A full listing of packed format classes and their members is given in the appendix.
 
 \section{Network Layer}
-The avalanche server broadcasts {\tt PackedRec} objects, serialized using a ROOT {\tt TBufferFile}. Client software must create a {\tt TBufferFile} using the packet data, read the {\tt PackedRec} object out of it, and cast the {\tt PackedRec}'s {\tt Rec} object to the correct type based on the value of {\tt RecordType}. Examples in C++ and Python are included.
+The avalanche server broadcasts {\tt PackedRec} objects, serialized using a ROOT {\tt TBufferFile}. On the client side, software must create a {\tt TBufferFile} using the packet data, read the {\tt PackedRec} object out of it, and cast the {\tt PackedRec}'s {\tt Rec} object to the correct type based on the value of {\tt RecordType}. C++ and Python libraries to perform this deserialization are included in with avalanche, and examples in both languages are given in the {\tt examples/} directory.
 
-\section{Dispatching Simulated RAT Events}
-{\tt avalanche} includes a RAT output processor which broadcasts packed events on ZeroMQ socket. Clients may thus listen to a RAT-simulated data stream for testing and development. The processor, DispatchEvents, is provided in the {\tt rat} subfolder of the avalanche distribution.
+\section{Dispatched Data in RAT}
+Using the avalanche libraries, an input producer and output processor have been developed that allows RAT to interact with dispatched data. Simulated events may be dispatched on the network, simulating the real data flow chain, and RAT can read in dispatched events, which may be used for online processing or writing monitoring tools as RAT processors.
+
+All new RAT-related source code is provided in the {\tt rat/} directory, and {\tt rat.diff} provides a diff generated against a recent SVN revision; to patch a working copy of RAT, run {\tt \$ patch -p0 rat.diff}.
+
+\subsection{Dispatching Simulated RAT Events}
+Avalanche includes a RAT output processor called DispatchEvents which broadcasts packed events. Clients may thus listen to a RAT-simulated data stream for testing and development.
 
 To call the processor from a macro, use e.g.:
 \begin{verbatim}
 /rat/proc dispatch
 /rat/procset address "tcp://localhost:5024"
 \end{verbatim}
-where localhost is the server hostname and 5024 is the server port.
+where localhost is the server hostname and 5024 is the server port. To bind all interfaces, substitute {\tt *} for localhost.
+
+\subsection{Reading Dispatched Events into RAT}
+Avalanche also includes a RAT input producer, InDispatcher, such that RAT may listen to a dispatcher stream and run a suite of processors on `live' data.
+
+To use this producer in a macro, use e.g.:
+\begin{verbatim}
+/rat/readdispatch/address tcp://localhost:5024
+\end{verbatim}
+where localhost is the server hostname and 5024 is the server port. Note the lack of quotation marks.
 
 \section{Dispatching Detector Events}
-A C++ library with a very simple API is provided in the {\tt lib} subfolder.
+A C++ library with a very simple API is provided in the {\tt lib/cpp} directory.
 
-A server consists of a single {\tt AvalancheServer} object, constructed with a given socket address. The {\tt AvalancheServer} has one method, {\tt sendObject}, which dispatches a ROOT {\tt TObject}. For example, to send a histogram {\tt TH1F* h1}:
+A server consists of a single {\tt avalanche::server} object, constructed with a given socket address. The {\tt avalanche::server} has one method, {\tt sendObject}, which dispatches a ROOT {\tt TObject}. For example, to send a histogram {\tt TH1F* h1}:
 
 \begin{verbatim}
- AvalancheServer* serv = new AvalancheServer("tcp://localhost:5024");
+ avalanche::server* serv = new avalanche::server("tcp://localhost:5024");
  serv->sendObject(h1);
 \end{verbatim}
-
 Any number of clients may be subscribed to the stream on port 5024.
 
-%\subsection{Processing Dispatched Events}
-%{\tt avalanche} includes a RAT input producer, so that events can be read from the dispatcher stream directly into RAT for processing. This could potentially be used to do online processing with a RAT cluster.
-
 \section{Writing Dispatcher Clients}
-Client software subscribes to a ZeroMQ TCP socket and deserializes ROOT {\tt TObjects}. The former is achieved with the ZeroMQ API, available in all major languages (and many minor ones). The latter imposes some language restrictions, as ROOT bindings exist for a limited number. C++, Python (PyROOT), and Ruby (RubyROOT) are the best-supported choices.
-\subsection{C++}
-In C++, ZeroMQ sockets are handled by the {\tt zmq} library, and deserialization with normal ROOT classes.
+Client software connects to a stream, receives and deserializes ROOT objects, and does something with these objects. Libraries for C++ and Python are provided in {\tt lib/} that manage the first two steps.
 
-Consider the following example (available in {\tt examples/client\_cpp}):
+\subsection{C++}
+{\tt libavalanche} provides a dispatcher client {\tt avalanche::client}.
+
+Consider the following example:
 
 \begin{verbatim}
-#include <zmq.hpp>
-#include <time.h>
 #include <iostream>
-
-#include <RAT/DS/Root.hh>
+#include <TH1F.h>
 #include <RAT/DS/PackedEvent.hh>
-#include <TBuffer.h>
-#include <TBufferFile.h>
+#include <avalanche.hpp>
 
-int main(int argc, char *argv[])
-{
-    // make a zeromq socket
-    zmq::context_t context(1);
-    zmq::socket_t subscriber(context, ZMQ_SUB);
-    subscriber.setsockopt(ZMQ_SUBSCRIBE, "", 0); //filter, strlen (filter));
-    subscriber.bind("tcp://*:5024");
+int main(int argc, char* argv[]) {
+  // create a client, listening for objects on port 5024
+  avalanche::client client("tcp://localhost:5024");
 
-    while (1) {
-        // listen for incoming messages
-        zmq::message_t message;
-        subscriber.recv(&message);
+  // you can listen to an unlimited number of stream, using addServer
+  client.addServer("tcp://localhost:5025");
 
-        // read message data into a TBufferFile and deserialize
-        TBufferFile buf(TBuffer::kRead, message.size(), message.data(), false);
-        RAT::DS::PackedRec* rec = \
-          (RAT::DS::PackedRec*)(buf.ReadObjectAny(RAT::DS::PackedRec::Class()));
-        if (rec)
-            std::cout << "Received PackedRec of type " << rec->RecordType << std::endl;
-        else
-            std::cout << "Error deserializing message data" << std::endl;
-        delete rec;
-    }
+  // receive RAT::DS::PackedRec objects
+  while (1) {
+    RAT::DS::PackedRec* rec = (RAT::DS::PackedRec*) client.recvObject(RAT::DS::PackedRec::Class());
+    if (rec)
+      std::cout << "Received PackedRec of type " << rec->RecordType << std::endl;
+    else
+      std::cout << "Error deserializing message data" << std::endl;
+    delete rec;
+  }
 
-    return 0;
+  return 0;
 }
 \end{verbatim}
 
-First, we set up a ZMQ socket to subscribe to a server. Then, we wait to receive packets. Packet data comes as {\tt zmq::message\_t} objects, which have an {\tt int zmq::message\_t::size()} and a {\tt void* zmq::message\_t::data()}. Using the size and data to construct a {\tt TBufferFile}, we may read out the deserialized {\tt PackedRec} with {\tt TBufferFile::ReadObject} or {\tt TBufferFile::ReadObjectAny}.
-
-In this example, we just print the record type. A real client would at this point cast the member {\tt Rec} object to the correct type, extract data, and perform some operations.
+First, we set up the client by giving it a server address to connect to. In this example, we also connect to one more server. You may connect to an unlimited number of streams; the packets received are interleaved, as if they arrived from one source. Next, we receive ROOT objects with {\tt recvObject}. The class must be specified for the deserialization step. Now we are ready to operate on the data. In this example we just print the record type; a real client would at this point cast the member {\tt Rec} object to the correct type, extract data, and perform some operations.
 
 \subsection{Python}
-In Python, ZeroMQ sockets are handled by the zmq module, available from github (\href{http://github.com/zeromq/pyzmq}{zeromq/pyzmq}) or via {\tt easy\_install}. Deserialization is done with ROOT classes accessed through PyROOT.
+The {\tt avalanche} Python package in {\tt lib/python} provides a dispatcher client {\tt avalanche.Client}. To install this package on your system, run {\tt \$ python setup.py install}.
 
-Consider the following example (available in {\tt examples/client\_python}):
+Consider the following example:
 
 \begin{verbatim}
-import sys
-import array
-import zmq
+import avalanche
 from rat import ROOT
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        address = sys.argv[1]
-    else:
-        address = 'tcp://*:5024'
+    # create client listening to localhost port 5024
+    cli = avalanche.Client('tcp://localhost:5024')
 
-    # set up zeromq socket
-    context = zmq.Context()
-    socket = context.socket(zmq.SUB)
-    socket.setsockopt(zmq.SUBSCRIBE, '')
-    socket.bind(address)
+    # you can listen to an unlimited number of stream, using add_server
+    cli.ad_server('tcp://localhost:5025');
 
+    # receive RAT::DS::PackedRec objects
     while True:
-        msg = socket.recv(copy=False)
-        # buffer contains null characters, so wrap in array to pass to c
-        b = array.array('c', msg.bytes)
-        buf = ROOT.TBufferFile(ROOT.TBuffer.kRead, len(b), b, False, 0)
-        rec = buf.ReadObject(ROOT.RAT.DS.PackedRec.Class())
+        rec = cli.recv_object(ROOT.RAT.DS.PackedRec.Class())
 
         if rec:
             print 'Received PackedRec of type', rec.RecordType
         else:
             print 'Error deserializing message data'
 \end{verbatim}
+First, we set up the client by giving it a server address to connect to. In this example, we also connect to one more server. You may connect to an unlimited number of streams; the packets received are interleaved, as if they arrived from one source. Next, we receive ROOT objects with {\tt recv\_object}. The class must be specified for the deserialization step. Now we are ready to operate on the data. In this example we just print the record type; a real client would at this point cast the member {\tt Rec} object to the correct type, extract data, and perform some operations.
 
-First, we set up a ZMQ socket to subscribe to a server. Then, we wait to receive packets. With {\tt copy=False} in {\tt recv()}, packet data comes as {\tt zmq.core.message.Message} objects, which have a {\tt buffer} (buffer) and a {\tt bytes} (str) object.
-
-To convert unterminated Python strings to null-terminated C strings, the Python/C interface reads a string only until it hits the first zero byte. To work around this, the buffer's byte array must be stored in a character {\tt array.array} as shown. PyROOT correctly casts the {\tt array} to a void pointer for the {\tt TBufferFile} constructor.
-
-Using the length of the character array and array itself to construct a {\tt TBufferFile}, we may read out the deserialized {\tt PackedRec} with {\tt TBufferFile::ReadObject} or {\tt TBufferFile::ReadObjectAny}.
-
-In this example, we just print the record type. A real client would at this point cast the member {\tt Rec} object to the correct type, extract data, and perform some operations.
+Note that in Python, there is no need to cast the object returned by {\tt recv\_object}, as this is taken care of by PyROOT.
 
 \subsection{Other Languages}
-Many other languages are supported by ZeroMQ, and at least Ruby has supported ROOT bindings. Implementations will be similar to those given in C++ and Python. For examples of ZeroMQ in your language, see \href{https://github.com/imatix/zguide/tree/master/examples}{https://github.com/imatix/zguide/tree/master/examples}.
+
+Many other languages are supported by ZeroMQ, and at least Ruby has supported ROOT bindings. Implementations will be similar to those given in C++ and Python. 
+
+A client must `subscribe' to a ZeroMQ TCP `publish' socket and deserialize ROOT {\tt TObjects} using a {\tt TBufferFile}. The former is achieved with the ZeroMQ API: set up a context and a subscriber socket, and connect that socket to one or more server addresses. The latter is simple in principle -- create a {\tt TBufferFile}, set the buffer to the packet contents, and read out the appropriate class. This may be complicated (as it is in Python) by the language's hadling of string termination; care must be taken to ensure that the buffer is not treated as a string and truncated at the first null byte. For guidance, see the C++ and Python client library source code in {\tt lib}.
+
+For examples of ZeroMQ in your language, see \href{https://github.com/imatix/zguide/tree/master/examples}{https://github.com/imatix/zguide/tree/master/examples}.
 
 \clearpage
 \section{Appendix: Packed Data Model}
