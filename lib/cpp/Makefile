@@ -1,6 +1,5 @@
 CFLAGS = -shared -fPIC -g
 INCLUDE = -I$(ROOTSYS)/include
-CXXFLAGS =
 LFLAGS = -L/usr/local/lib -L$(ROOTSYS)/lib
 
 CC = g++
