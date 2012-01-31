@@ -1,40 +1,81 @@
-import array
-import zmq
-import ROOT
+import sys
+import signal
+import threading
+import Queue
+
+import dispatch
+import db
 
 class Client:
-    '''a client subscribes to an avalanche server and receives ROOT TObjects'''
-    def __init__(self, address):
-        self.serv_addr = []
-        self.context = zmq.Context()
-        self.socket = self.context.socket(zmq.SUB)
-        self.socket.setsockopt(zmq.SUBSCRIBE, '')
-        self.add_server(address)
-
-    def add_server(self, address):
-        '''connect to another stream. clients may listen to an unlimited number
-        of streams, the messages from which are interleaved.
-        '''
-        self.serv_addr.append(address)
-        self.socket.connect(address)
-
-    def recv_object(self, cls, flags=0):
-        '''receives and returns a TObject of the class specified by TClass
-        `cls`. recv_object blocks by default, but may be made non-blocking
-        with the zmq NOBLOCK flag.
-        '''
-        try:
-            msg = self.socket.recv(flags=flags, copy=False)
-        except zmq.ZMQError, e:
-            if e.errno == zmq.EAGAIN:
-                pass
-            else:
-                raise
-        else:
-            b = array.array('c', msg.bytes)
-            buf = ROOT.TBufferFile(ROOT.TBuffer.kRead, len(b), b, False, 0)
+    '''A Client subscribes to one or more dispatcher streams and couchdb
+    databases, and produces a stream of event data and headers.
     
-            o = buf.ReadObject(cls)
+    Clients may listen to an unlimited number of streams, but data from
+    different sources is not guaranteed to arrive in order!
+    '''
+    def __init__(self):
+        self.queue = Queue.Queue()
+        signal.signal(signal.SIGINT, self.signal_handler)
 
-            return o
+        self.dispatcher_client = None
+        self.couchdb_clients = []
+
+        self.threads = []
+        self.streams = {'dispatcher': [], 'couchdb': []}
+
+    def signal_handler(self, signal, frame):
+        print 'Caught Ctrl-C, exiting...'
+
+        print 'Stopping dispatcher client...'
+        self.dispatcher_client.stop()
+
+        print 'Stopping couchdb clients...'
+        for c in self.couchdb_clients:
+            print 'Stopping', c
+            c.stop()
+
+        # wait for threads to join
+        for thread in self.threads:
+            print 'Joining', thread
+            thread.join()
+
+        sys.exit(0)
+
+    def add_dispatcher(self, address):
+        '''connect to a dispatcher stream. clients may listen to an unlimited
+        number of streams, the messages from which are interleaved.
+        '''
+        # create dispatcher client thread if necessary
+        if not self.dispatcher_client:
+            self.dispatcher_client = dispatch.DispatcherStream(self.queue)
+            t = threading.Thread(target=self.dispatcher_client.run)
+            t.start()
+            self.threads.append(t)
+
+        # add server to dispatcher client
+        self.dispatcher_client.add_server(address)
+
+        # add address to the list
+        self.streams['dispatcher'].append(address)
+
+    def add_db(self, host, dbname, username=None, password=None):
+        '''connect to a couch database'''
+        # create couchdb client
+        c = db.CouchDB(self.queue, host, dbname, username=username, password=password)
+        self.couchdb_clients.append(c)
+
+        # create couchdb client thread
+        t = threading.Thread(target=c.run)
+        t.start()
+        self.threads.append(t)
+
+        # add address to the list
+        self.streams['couchdb'].append(host + '/' + dbname)
+
+    def recv(self, blocking=False):
+        '''receive the next piece of data from connected data sources'''
+        try:
+            return self.queue.get(blocking)
+        except Queue.Empty:
+            return None
 

@@ -12,6 +12,6 @@ setup(
     author_email='mastbaum@hep.upenn.com',
     url='http://github.com/mastbaum/avalanche',
     packages=['avalanche'],
-    install_requires = ['pyzmq-static']
+    install_requires = ['pyzmq-static', 'couchdb']
 )
 
