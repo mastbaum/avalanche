@@ -24,27 +24,21 @@ class Client:
         self.streams = {'dispatcher': [], 'couchdb': []}
 
     def signal_handler(self, signal, frame):
+        '''handle termination signals cleanly by stopping and re-joining
+        client threads
+        '''
         print 'Caught Ctrl-C, exiting...'
-
-        print 'Stopping dispatcher client...'
         self.dispatcher_client.stop()
-
-        print 'Stopping couchdb clients...'
         for c in self.couchdb_clients:
             print 'Stopping', c
             c.stop()
-
-        # wait for threads to join
         for thread in self.threads:
-            print 'Joining', thread
             thread.join()
 
         sys.exit(0)
 
     def add_dispatcher(self, address):
-        '''connect to a dispatcher stream. clients may listen to an unlimited
-        number of streams, the messages from which are interleaved.
-        '''
+        '''connect to a dispatcher stream'''
         # create dispatcher client thread if necessary
         if not self.dispatcher_client:
             self.dispatcher_client = dispatch.DispatcherStream(self.queue)

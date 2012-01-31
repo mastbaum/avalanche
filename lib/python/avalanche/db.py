@@ -85,13 +85,15 @@ def doc_to_record(doc):
         r.RunID = int(doc['run_id'])
 
     else:
+        # unknown record type
         return None
 
     o.Rec = r
     return o
 
 class CouchDB:
-    '''A connection to a couchdb server's changes feed.
+    '''A connection to a couchdb server's changes feed. Changed documents are
+    placed in a queue.
 
     Parameters:
         - queue: Queue.Queue
@@ -101,6 +103,8 @@ class CouchDB:
             e.g. 'http://localhost:5984'
         - dbname: string
             The name of the database to watch, e.g. 'mydb'
+        - filter: string, *optional*
+            Name of the couchdb filter function to apply to the changes feed
         - username: string, *optional*
             Username for authentication to the database
         - password: string, *optional*
@@ -115,10 +119,13 @@ class CouchDB:
         self.db = couch[dbname]
 
         self.kill = False
-        self.seq = 0
+        self.seq = self.db.info()['update_seq']
         self.filter = filter
 
     def stop(self):
+        '''terminate the run() loop, waiting for any current call to recv()
+        to complete
+        '''
         self.kill = True
 
     def run(self):

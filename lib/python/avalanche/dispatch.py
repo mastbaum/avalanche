@@ -37,6 +37,9 @@ class DispatcherStream:
         self.cls = cls
 
     def stop(self):
+        '''terminate the run() loop, waiting for any current call to recv()
+        to complete
+        '''
         self.kill = True
 
     def run(self):
