@@ -1,9 +1,9 @@
 CFLAGS = -shared -fPIC -g
-INCLUDE = -I$(ROOTSYS)/include -I$(RATROOT)/include
-LFLAGS = -L/usr/local/lib -L$(ROOTSYS)/lib -L$(RATROOT)/lib
+INCLUDE = -I$(ROOTSYS)/include
+LFLAGS = -L/usr/local/lib -L$(ROOTSYS)/lib
 
 CC = g++
-LIBS = -lzmq -lpthread -lCore -lCint -lRIO -ldl -rdynamic
+LIBS = -lzmq -lpthread -lcurl -lCore -lCint -lRIO -ldl -rdynamic
 
 all: libavalanche.so
 

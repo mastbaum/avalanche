@@ -7,24 +7,19 @@
 #include <queue>
 #include <pthread.h>
 #include <zmq.hpp>
-#include <RAT/DS/PackedEvent.hh>
 //#include <json_value.h>
 
-class TObject;
+#include "http.hpp"
 
-namespace RAT {
-    namespace DS {
-        class PackedRec;
-    } // namespace DS
-} // namespace RAT
+class TObject;
 
 namespace avalanche {
 
     /** 
      * An avalanche dispatcher server
      *
-     * The server serializes RAT::DS::PackedRec objects and sends them out
-     * a ZeroMQ publish socket, to which many clients may be subscribed
+     * The server serializes ROOT TObjects and sends them out on a ZeroMQ
+     * publish socket, to which many clients may be subscribed
      */
     class server
     {
@@ -39,11 +34,11 @@ namespace avalanche {
             ~server() {};
 
             /**
-             * Send a RAT::DS::PackedRec object
+             * Send a TObject
              * @param o A reference to the object to send. The caller maintains ownership.
              * @return 0 if successful, 1 if unsuccessful
              */
-            int sendObject(RAT::DS::PackedRec* o) const;
+            int sendObject(TObject* o) const;
 
         protected:
             std::string address;     //< The local server address
@@ -54,10 +49,9 @@ namespace avalanche {
     /**
      * An avalanche data stream client
      *
-     * The client receives RAT::DS::PackedRec objects from both dispatcher
-     * streams (i.e. avalanche::servers) and from CouchDB databases,
-     * aggregating events from the builder and headers in the database into
-     * one homogeneous stream.
+     * The client receives TObjects from both dispatcher streams (i.e.
+     * avalanche::servers) and from CouchDB databases, aggregating events from
+     * the builder and headers in the database into one homogeneous stream.
      *
      * Clients may connect to unlimited numbers of dispatchers and databases,
      * but data from different sources is not guaranteed to be ordered.
@@ -103,15 +97,16 @@ namespace avalanche {
             /**
              * Receive the next available record
              * @param blocking If true, wait until data is available to return
-             * @return The next available RAT::DS::PackedRec
+             * @return The next available TObject
              */
-            RAT::DS::PackedRec* recv(bool blocking=false);
+            TObject* recv(bool blocking=false);
 
         protected:
-            std::queue<RAT::DS::PackedRec*> queue; //< FIFO buffer of records
-            pthread_mutex_t* queueMutex;     //< Mutex protection for queue
-            zmq::context_t* context;         //< ZeroMQ context for dispatcher
-            zmq::socket_t* socket;           //< ZeroMQ socket for dispatcher
+            std::queue<TObject*> queue;  //< FIFO buffer of received objects
+            pthread_mutex_t* queueMutex; //< Mutex protection for queue
+            httpDownloader* downloader;  //< Helper class for downloads
+            zmq::context_t* context;     //< ZeroMQ context for dispatcher
+            zmq::socket_t* socket;       //< ZeroMQ socket for dispatcher
             std::vector<pthread_t*> threads; //< List of all "watcher" threads
             /**
              * A map with lists of connected streams
@@ -126,7 +121,7 @@ namespace avalanche {
      * @see watchDispatcher()
      */
     struct dispatcherState {
-        std::queue<RAT::DS::PackedRec*>* queue;
+        std::queue<TObject*>* queue;
         pthread_mutex_t* queueMutex;
         zmq::socket_t* socket;
         int flags;
@@ -138,8 +133,9 @@ namespace avalanche {
      * @see watchDB()
      */
     struct dbState {
-        std::queue<RAT::DS::PackedRec*>* queue;
+        std::queue<TObject*>* queue;
         pthread_mutex_t* queueMutex;
+        httpDownloader* downloader;
         std::string host;
         std::string dbname;
         std::string filterName;
@@ -150,8 +146,8 @@ namespace avalanche {
     /**
      * Watch a dispatcher stream
      *
-     * Listen to a ZeroMQ socket, deserialized RAT::DS::PackedRec objects and
-     * pushing them into a std::queue as they are received
+     * Listen to a ZeroMQ socket, deserialized TObjects and pushing them into a
+     * std::queue as they are received
      *
      * All relevant parameters are passed in via the single argument, which is
      * really a dispatcherState struct. This is necessary because this function
@@ -165,8 +161,7 @@ namespace avalanche {
      * Watch a database stream
      *
      * Listen to a CouchDB changes feed, turning header documents into
-     * RAT::DS::PackedRec objects and pushing them into a std::queue as they
-     * are received
+     * TObjects and pushing them into a std::queue as they are received
      *
      * All relevant parameters are passed in via the single argument, which is
      * really a dbState struct. This is necessary because this function
@@ -181,7 +176,7 @@ namespace avalanche {
      * @param doc The document to convert to a PackedRec
      * @return The PackedRec representation, or NULL if conversion failed
      */
-    //RAT::DS::PackedRec* docToRecord(Json::Value* doc);
+    //TObject* docToRecord(Json::Value* doc);
 
 } // namespace avalanche
 

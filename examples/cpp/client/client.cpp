@@ -7,13 +7,13 @@ int main(int argc, char* argv[]) {
     // create a client
     avalanche::client client;
 
-    // connect to a dispatcher at localhost:5024
+    // connect to a few dispatchers
     client.addDispatcher("tcp://localhost:5025");
     client.addDispatcher("tcp://localhost:5024");
 
     // receive RAT::DS::PackedRec objects
     while (1) {
-        RAT::DS::PackedRec* rec = client.recv();
+        RAT::DS::PackedRec* rec = (RAT::DS::PackedRec*) client.recv();
         if (rec) {
             std::cout << "Received PackedRec of type " << rec->RecordType << std::endl;
             if (rec->RecordType == 1) {

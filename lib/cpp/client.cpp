@@ -1,7 +1,11 @@
+#include <iostream>
 #include <zmq.hpp>
 #include <pthread.h>
+#include <stdint.h>
 #include <string>
-#include <RAT/DS/PackedEvent.hh>
+
+#include <TObject.h>
+#include <TClass.h>
 
 #include "avalanche.hpp"
 
@@ -19,7 +23,7 @@ namespace avalanche {
             delete threads[i];
         }
 
-        // clean up queue
+        // queue cleanup
         pthread_mutex_unlock(queueMutex);
         pthread_mutex_destroy(queueMutex);
         delete queueMutex;
@@ -28,9 +32,12 @@ namespace avalanche {
             queue.pop();
         }
 
-        // clean up zeromq
+        // zeromq cleanup
         delete context;
         delete socket;
+
+        // couchdb cleanup
+        delete downloader;
     }
 
     void client::addDispatcher(std::string _addr) {
@@ -60,10 +67,15 @@ namespace avalanche {
     void client::addDB(std::string _host, std::string _dbname, std::string _filterName, std::string _user, std::string _pass) {
         streams["couchdb"].push_back(_host + "/" + _dbname);
 
+        if (!downloader) {
+            downloader = new httpDownloader();
+        }
+
         // launch couchdb-watching thread with given state
         dbState s;
         s.queue = &queue;
         s.queueMutex = queueMutex;
+        s.downloader = downloader;
         s.host = _host;
         s.dbname = _dbname;
         s.filterName = _filterName;
@@ -75,7 +87,7 @@ namespace avalanche {
         threads.push_back(couchThread);
     }
 
-    RAT::DS::PackedRec* client::recv(bool blocking) {
+    TObject* client::recv(bool blocking) {
         while (blocking && queue.empty())
             continue;
 
@@ -84,8 +96,8 @@ namespace avalanche {
         }
         else {
             pthread_mutex_lock(queueMutex);
-            // make a copy of the oldest item; pop() calls destructor 
-            RAT::DS::PackedRec* o = new RAT::DS::PackedRec(*(queue.front()));
+            TObject* o = (TObject*) queue.front()->IsA()->New();
+            memcpy(o, queue.front(), o->IsA()->Size());
             queue.pop();
             pthread_mutex_unlock(queueMutex);
             return o;

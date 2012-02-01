@@ -1,7 +1,7 @@
+#include <iostream>
 #include <zmq.hpp>
 #include <TBuffer.h>
 #include <TBufferFile.h>
-#include <RAT/DS/PackedEvent.hh>
 
 #include "avalanche.hpp"
 
@@ -22,7 +22,7 @@ namespace avalanche {
                 TBufferFile bf(TBuffer::kRead, message.size(), message.data(), false);
 
                 // make a copy, since the buffer will disappear
-                RAT::DS::PackedRec* o = new RAT::DS::PackedRec(*((RAT::DS::PackedRec*) bf.ReadObjectAny(RAT::DS::PackedRec::Class())));
+                TObject* o = (TObject*) bf.ReadObjectAny(TObject::Class());
 
                 pthread_mutex_lock(s.queueMutex);
                 s.queue->push(o);
