@@ -26,29 +26,13 @@ A full listing of packed format classes and their members is given in the append
 \section{Network Layer}
 The avalanche server broadcasts {\tt PackedRec} objects, serialized using a ROOT {\tt TBufferFile}. On the client side, software must create a {\tt TBufferFile} using the packet data, read the {\tt PackedRec} object out of it, and cast the {\tt PackedRec}'s {\tt Rec} object to the correct type based on the value of {\tt RecordType}. C++ and Python libraries to perform this deserialization are included in with avalanche, and examples in both languages are given in the {\tt examples/} directory.
 
+\section{CouchDB Integration}
+Avalanche clients may also connect to a Couch database and receive headers as they are pushed in by the DAQ. These notifications are retrieved via the CouchDB changes feed\footnote{\href{http://wiki.apache.org/couchdb/HTTP\_database\_API\#Changes}{http://wiki.apache.org/couchdb/HTTP\_database\_API\#Changes}} and the {\tt couchdb-python} Python package\footnote{\href{http://code.google.com/p/couchdb-python/}{http://code.google.com/p/couchdb-python/}}. Headers from CouchDB are interleaved with the rest of the data stream and indistinguishable from those received from an avalanche server.
+
 \section{Dispatched Data in RAT}
 Using the avalanche libraries, an input producer and output processor have been developed that allows RAT to interact with dispatched data. Simulated events may be dispatched on the network, simulating the real data flow chain, and RAT can read in dispatched events, which may be used for online processing or writing monitoring tools as RAT processors.
 
-All new RAT-related source code is provided in the {\tt rat/} directory, and {\tt rat.diff} provides a diff generated against a recent SVN revision; to patch a working copy of RAT, run {\tt \$ patch -p0 rat.diff}.
-
-\subsection{Dispatching Simulated RAT Events}
-Avalanche includes a RAT output processor called DispatchEvents which broadcasts packed events. Clients may thus listen to a RAT-simulated data stream for testing and development.
-
-To call the processor from a macro, use e.g.:
-\begin{verbatim}
-/rat/proc dispatch
-/rat/procset address "tcp://localhost:5024"
-\end{verbatim}
-where localhost is the server hostname and 5024 is the server port. To bind all interfaces, substitute {\tt *} for localhost.
-
-\subsection{Reading Dispatched Events into RAT}
-Avalanche also includes a RAT input producer, InDispatcher, such that RAT may listen to a dispatcher stream and run a suite of processors on `live' data.
-
-To use this producer in a macro, use e.g.:
-\begin{verbatim}
-/rat/readdispatch/address tcp://localhost:5024
-\end{verbatim}
-where localhost is the server hostname and 5024 is the server port. Note the lack of quotation marks.
+The code to interact with dispatched data streams was committed to SVN in r652 (git revision\\ f5387a0b495ca4b719a3a7e41487920b40f463bb). Documentation can be found in \href{https://www.snolab.ca/snoplus/private/DocDB/cgi/ShowDocument?docid=1300}{SNO+-doc-1300}.
 
 \section{Dispatching Detector Events}
 A C++ library with a very simple API is provided in the {\tt lib/cpp} directory.
@@ -62,7 +46,7 @@ A server consists of a single {\tt avalanche::server} object, constructed with a
 Any number of clients may be subscribed to the stream on port 5024.
 
 \section{Writing Dispatcher Clients}
-Client software connects to a stream, receives and deserializes ROOT objects, and does something with these objects. Libraries for C++ and Python are provided in {\tt lib/} that manage the first two steps.
+Client software connects to a stream and/or database, receives and reconstructs ROOT objects, and does something with these objects. Libraries for C++ and Python are provided in {\tt lib/} that manage the first two steps.
 
 \subsection{C++}
 {\tt libavalanche} provides a dispatcher client {\tt avalanche::client}.
@@ -133,11 +117,12 @@ As above, {\tt recv\_object} is blocking by default (waits until data is availab
 
 \subsection{Other Languages}
 
-Many other languages are supported by ZeroMQ, and at least Ruby has supported ROOT bindings. Implementations will be similar to those given in C++ and Python. 
+Many other languages are supported by ZeroMQ, and at least Ruby has supported ROOT bindings. Implementations will be similar to those given in C++ and Python. For examples of ZeroMQ in your language, see \href{https://github.com/imatix/zguide/tree/master/examples}{https://github.com/imatix/zguide/tree/master/examples}.
 
 A client must `subscribe' to a ZeroMQ TCP `publish' socket and deserialize ROOT {\tt TObjects} using a {\tt TBufferFile}. The former is achieved with the ZeroMQ API: set up a context and a subscriber socket, and connect that socket to one or more server addresses. The latter is simple in principle -- create a {\tt TBufferFile}, set the buffer to the packet contents, and read out the appropriate class. This may be complicated (as it is in Python) by the language's hadling of string termination; care must be taken to ensure that the buffer is not treated as a string and truncated at the first null byte. For guidance, see the C++ and Python client library source code in {\tt lib}.
 
-For examples of ZeroMQ in your language, see \href{https://github.com/imatix/zguide/tree/master/examples}{https://github.com/imatix/zguide/tree/master/examples}.
+
+CouchDB bindings also exist for many languages, but none are essential since Couch communicates using JSON strings sent over HTTP. To interact with a database, code needs to make HTTP queries and convert JSON strings into native objects. All major languages have such facilities. If no library exists for your language, details on the CouchDB changes API are available at \href{http://wiki.apache.org/couchdb/HTTP\_database\_API\#Changes}{http://wiki.apache.org/couchdb/HTTP\_database \_API\#Changes}.
 
 \clearpage
 \section{Appendix: Packed Data Model}
