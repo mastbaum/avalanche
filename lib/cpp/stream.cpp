@@ -28,8 +28,8 @@ namespace avalanche {
                 s.queue->push(o);
                 pthread_mutex_unlock(s.queueMutex);
             }
-            catch (zmq::error_t e) {
-                if (e.num() == EAGAIN) // no data in buffer
+            catch (zmq::error_t &e) {
+                if (e->num() == EAGAIN) // no data in buffer
                     return NULL;
                 else
                     throw e;

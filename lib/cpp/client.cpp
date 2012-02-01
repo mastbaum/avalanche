@@ -76,10 +76,10 @@ namespace avalanche {
     }
 
     RAT::DS::PackedRec* client::recv(bool blocking) {
-        while (blocking && queue.size() == 0)
+        while (blocking && queue.empty())
             continue;
 
-        if (queue.size() == 0) {
+        if (queue.empty()) {
             return NULL;
         }
         else {
