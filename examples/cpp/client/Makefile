@@ -1,6 +1,4 @@
-CFLAGS = 
 INCLUDE = -I$(ROOTSYS)/include -I$(AVALANCHE) -I$(RATROOT)/include
-CXXFLAGS =
 LFLAGS = -L/usr/local/lib -L$(ROOTSYS)/lib -L$(AVALANCHE) -L$(RATROOT)/lib
 
 CC = g++

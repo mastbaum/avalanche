@@ -4,19 +4,28 @@
 #include <avalanche.hpp>
 
 int main(int argc, char* argv[]) {
-  // create a client, listening for objects on port 5024
-  avalanche::client client("tcp://localhost:5024");
+    // create a client
+    avalanche::client client;
 
-  // receive RAT::DS::PackedRec objects
-  while (1) {
-    RAT::DS::PackedRec* rec = (RAT::DS::PackedRec*) client.recvObject(RAT::DS::PackedRec::Class());
-    if (rec)
-      std::cout << "Received PackedRec of type " << rec->RecordType << std::endl;
-    else
-      std::cout << "Error deserializing message data" << std::endl;
-    delete rec;
-  }
+    // connect to a dispatcher at localhost:5024
+    client.addDispatcher("tcp://localhost:5025");
+    client.addDispatcher("tcp://localhost:5024");
 
-  return 0;  
+    // receive RAT::DS::PackedRec objects
+    while (1) {
+        RAT::DS::PackedRec* rec = client.recv();
+        if (rec) {
+            std::cout << "Received PackedRec of type " << rec->RecordType << std::endl;
+            if (rec->RecordType == 1) {
+                RAT::DS::PackedEvent* event = dynamic_cast<RAT::DS::PackedEvent*> (rec->Rec);
+                std::cout << " NHIT = " << event->NHits << std::endl;
+            }
+        }
+        else
+            continue;
+        delete rec;
+    }
+
+    return 0;  
 }
 
