@@ -3,13 +3,19 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <queue>
 #include <pthread.h>
 #include <zmq.hpp>
-#include <json_value.h>
+//#include <json_value.h>
 
 class TObject;
-class RAT::DS::PackedRec;
+
+namespace RAT {
+    namespace DS {
+        class PackedRec;
+    } // namespace DS
+} // namespace RAT
 
 namespace avalanche {
 
@@ -28,7 +34,7 @@ class server
 
 class client {
     public:
-        client();
+        client() {};
         ~client();
 	void addDispatcher(std::string _addr);
         void addDB(std::string _host, std::string _dbname, std::string _filterName, std::string _user, std::string _pass);
@@ -38,13 +44,15 @@ class client {
     protected:
         std::queue<TObject*> queue;
         zmq::context_t* context;
+        zmq::socket_t* socket;
         std::vector<pthread_t*> threads;
-        std::map<std::string, std::vector<string> > streams;
+        std::map<std::string, std::vector<std::string> > streams;
 };
 
 struct dispatcherState {
     std::queue<TObject*>* queue;
     zmq::socket_t* socket;
+    int flags;
 };
 
 struct dbState {
@@ -59,7 +67,7 @@ struct dbState {
 void* watchDispatcher(void* arg);
 void* watchDB(void* arg);
 
-RAT::DS::PackedRec* docToRecord(Json::Value* doc);
+//RAT::DS::PackedRec* docToRecord(Json::Value* doc);
 
 } // namespace avalanche
 

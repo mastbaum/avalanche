@@ -9,11 +9,9 @@
 
 namespace avalanche {
 
-client::client() { }
-
 client::~client() {
     for (size_t i=0; i<threads.size(); i++) {
-        threads[i].join();
+        pthread_join(*threads[i], NULL);
         delete threads[i];
     }
 
@@ -30,12 +28,13 @@ void client::addDispatcher(std::string _addr) {
         context = new zmq::context_t(1);
         socket = new zmq::socket_t(*context, ZMQ_SUB);
         socket->setsockopt(ZMQ_SUBSCRIBE, "", 0);
-        streams["dispatcher"].append(_addr);
+        streams["dispatcher"].push_back(_addr);
 
         // launch dispatcher thread with (shared) state
         dispatcherState s;
         s.queue = &queue;
         s.socket = socket;
+        s.flags = ZMQ_NOBLOCK;
 
         pthread_t* dispatcherThread;
         pthread_create(dispatcherThread, NULL, watchDispatcher, (void*) &s);
@@ -47,7 +46,7 @@ void client::addDispatcher(std::string _addr) {
 }
 
 void client::addDB(std::string _host, std::string _dbname, std::string _filterName, std::string _user, std::string _pass) {
-    streams["couchdb"].append(host + "/" + dbname);
+    streams["couchdb"].push_back(_host + "/" + _dbname);
 
     // launch couchdb-watching thread with given state
     dbState s;
@@ -69,8 +68,9 @@ TObject* client::recv(bool blocking) {
 
     if (queue.size() == 0) {
         return NULL;
+    }
     else {
-        TObject* o = new TObject(queue.front());
+        TObject* o = new TObject(*(queue.front()));
         queue.pop();
         return o;
     }
@@ -89,14 +89,7 @@ void* watchDispatcher(void* arg) {
 
             // TBufferFile used for TObject serialization
             TBufferFile bf(TBuffer::kRead, message.size(), message.data(), false);
-            TObject* o = bf.ReadObjectAny(cls);
-
-            // make a copy, since the buffer goes away
-            //void* o = NULL;
-            //if (bfo) {
-            //    o = TObject::Class()->New();
-            //    memcpy(o, bfo, cls->Size());
-            //}
+            TObject* o = new TObject(*((TObject*) bf.ReadObjectAny(TObject::Class())));
 
             s.queue->push(o);
         }

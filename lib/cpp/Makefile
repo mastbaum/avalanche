@@ -4,7 +4,7 @@ CXXFLAGS =
 LFLAGS = -L/usr/local/lib -L$(ROOTSYS)/lib
 
 CC = g++
-LIBS = -lzmq -lCore -lCint -lRIO -ldl -rdynamic
+LIBS = -lzmq -lpthread -lCore -lCint -lRIO -ldl -rdynamic
 
 all: libavalanche.so
 
