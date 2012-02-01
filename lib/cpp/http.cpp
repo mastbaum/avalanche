@@ -1,6 +1,7 @@
-#include <http.hpp>
 #include <assert.h>
 #include <curl/curl.h>
+
+#include "http.hpp"
 
 namespace avalanche {
 
@@ -27,7 +28,7 @@ namespace avalanche {
         return size * nmemb;
     }
 
-    std::string httpDownloader::Fetch(const std::string &url) {
+    std::string httpDownloader::fetch(const std::string &url) {
         if (!handle) {
             handle = curl_easy_init();
             assert(handle);
