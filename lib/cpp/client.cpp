@@ -1,8 +1,4 @@
 #include <zmq.hpp>
-#include <TClass.h>
-#include <TBuffer.h>
-#include <TBufferFile.h>
-#include <stdlib.h>
 #include <pthread.h>
 #include <string>
 #include <RAT/DS/PackedEvent.hh>
@@ -17,11 +13,13 @@ namespace avalanche {
     }
 
     client::~client() {
+        // destroy threads
         for (size_t i=0; i<threads.size(); i++) {
             pthread_join(*threads[i], NULL);
             delete threads[i];
         }
 
+        // clean up queue
         pthread_mutex_unlock(queueMutex);
         pthread_mutex_destroy(queueMutex);
         delete queueMutex;
@@ -30,7 +28,9 @@ namespace avalanche {
             queue.pop();
         }
 
+        // clean up zeromq
         delete context;
+        delete socket;
     }
 
     void client::addDispatcher(std::string _addr) {
@@ -84,45 +84,12 @@ namespace avalanche {
         }
         else {
             pthread_mutex_lock(queueMutex);
+            // make a copy of the oldest item; pop() calls destructor 
             RAT::DS::PackedRec* o = new RAT::DS::PackedRec(*(queue.front()));
             queue.pop();
             pthread_mutex_unlock(queueMutex);
             return o;
         }
-    }
-
-    void* watchDispatcher(void* arg) {
-        dispatcherState s = *((dispatcherState*) arg);
-
-        while(1) {
-            zmq::message_t message;
-
-            try {
-                s.socket->recv(&message, s.flags);
-                if (message.size() == 0)
-                    continue;
-
-                // TBufferFile used for TObject serialization
-                TBufferFile bf(TBuffer::kRead, message.size(), message.data(), false);
-                RAT::DS::PackedRec* o = new RAT::DS::PackedRec(*((RAT::DS::PackedRec*) bf.ReadObjectAny(RAT::DS::PackedRec::Class())));
-                pthread_mutex_lock(s.queueMutex);
-                s.queue->push(o);
-                pthread_mutex_unlock(s.queueMutex);
-            }
-            catch (zmq::error_t e) {
-                if (e.num() == EAGAIN) // no data in buffer
-                    return NULL;
-                else
-                    throw e;
-            }
-        }
-
-        return NULL;
-    }
-
-    void* watchDB(void* arg) {
-        dbState s = *((dbState*) arg);
-        return NULL;
     }
 
 } // namespace avalanche

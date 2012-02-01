@@ -8,7 +8,7 @@ LIBS = -lzmq -lpthread -lCore -lCint -lRIO -ldl -rdynamic
 all: libavalanche.so
 
 libavalanche.so:
-	$(CC) -o libavalanche.so server.cpp client.cpp $(INCLUDE) $(CFLAGS) $(CXXFLAGS) $(LFLAGS) $(LIBS) `root-config --libs`
+	$(CC) -o libavalanche.so server.cpp client.cpp stream.cpp $(INCLUDE) $(CFLAGS) $(CXXFLAGS) $(LFLAGS) $(LIBS) `root-config --libs`
 
 clean:
 	-$(RM) *.o *.so
