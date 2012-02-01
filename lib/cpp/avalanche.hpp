@@ -20,37 +20,111 @@ namespace RAT {
 
 namespace avalanche {
 
+    /** 
+     * An avalanche dispatcher server
+     *
+     * The server serializes RAT::DS::PackedRec objects and sends them out
+     * a ZeroMQ publish socket, to which many clients may be subscribed
+     */
     class server
     {
         public:
+            /**
+             * Create an avalanche server
+             * @param _addr The address to bind the server to
+             */
             server(std::string _addr);
+
+            /** Destroy this server, closing any open connections */
             ~server() {};
-            int sendObject(TObject* o);
+
+            /**
+             * Send a RAT::DS::PackedRec object
+             * @param o A reference to the object to send. The caller maintains ownership.
+             * @return 0 if successful, 1 if unsuccessful
+             */
+            int sendObject(RAT::DS::PackedRec* o) const;
 
         protected:
-            std::string address;
-            zmq::context_t* context;
-            zmq::socket_t* socket;
+            std::string address;     //< The local server address
+            zmq::context_t* context; //< ZeroMQ context for the server socket
+            zmq::socket_t* socket;   //< ZeroMQ server socket
     };
 
+    /**
+     * An avalanche data stream client
+     *
+     * The client receives RAT::DS::PackedRec objects from both dispatcher
+     * streams (i.e. avalanche::servers) and from CouchDB databases,
+     * aggregating events from the builder and headers in the database into
+     * one homogeneous stream.
+     *
+     * Clients may connect to unlimited numbers of dispatchers and databases,
+     * but data from different sources is not guaranteed to be ordered.
+     */
     class client {
         public:
+            /** Create a new client */
             client();
+
+            /**
+             * Destroy this client, closing any open connections and
+             * terminating any running threads
+             */
             ~client();
+
+            /**
+             * Connect to a dispatcher stream. This may be called repeatedly
+             * to "watch" many streams with data interleaved.
+             * @param _addr The address of the dispatcher server
+             */
             void addDispatcher(std::string _addr);
+
+            /**
+             * Connect to a CouchDB database, watching the changes feed for
+             * header data. This may be called repeatedly to "watch" many
+             * databases.
+             * @param _host Hostname of the CouchDB server
+             * @param _dbname Name of the database to watch
+             * @param _filter Name of the CouchDB filter function to apply to
+             *                the changes feed
+             * @param _user Username for database authentication
+             * @param _pass Password for database authentication
+             */
             void addDB(std::string _host, std::string _dbname, std::string _filterName, std::string _user, std::string _pass);
+
+            /**
+             * Get the lists of connected dispatchers and databases
+             * @return A map (keys "dispatcher", "couchdb") of lists of
+             *         connection identifier strings
+             */
             std::map<std::string, std::vector<std::string> > getStreamList();
+
+            /**
+             * Receive the next available record
+             * @param blocking If true, wait until data is available to return
+             * @return The next available RAT::DS::PackedRec
+             */
             RAT::DS::PackedRec* recv(bool blocking=false);
 
         protected:
-            std::queue<RAT::DS::PackedRec*> queue;
-            pthread_mutex_t* queueMutex;
-            zmq::context_t* context;
-            zmq::socket_t* socket;
-            std::vector<pthread_t*> threads;
+            std::queue<RAT::DS::PackedRec*> queue; //< FIFO buffer of records
+            pthread_mutex_t* queueMutex;     //< Mutex protection for queue
+            zmq::context_t* context;         //< ZeroMQ context for dispatcher
+            zmq::socket_t* socket;           //< ZeroMQ socket for dispatcher
+            std::vector<pthread_t*> threads; //< List of all "watcher" threads
+            /**
+             * A map with lists of connected streams
+             * e.g. streams["dispatcher"] -> ["tcp://localhost:5024", ...]
+             */
             std::map<std::string, std::vector<std::string> > streams;
     };
 
+    /**
+     * Container for dispatcher stream state
+     * Used to pass state information to a watchDispatcher thread
+     * @see watchDispatcher()
+     */
     struct dispatcherState {
         std::queue<RAT::DS::PackedRec*>* queue;
         pthread_mutex_t* queueMutex;
@@ -58,6 +132,11 @@ namespace avalanche {
         int flags;
     };
 
+    /**
+     * Container for CouchDB stream state
+     * Used to pass state information to a watchDB thread
+     * @see watchDB()
+     */
     struct dbState {
         std::queue<RAT::DS::PackedRec*>* queue;
         pthread_mutex_t* queueMutex;
@@ -68,9 +147,40 @@ namespace avalanche {
         std::string password;
     };
 
+    /**
+     * Watch a dispatcher stream
+     *
+     * Listen to a ZeroMQ socket, deserialized RAT::DS::PackedRec objects and
+     * pushing them into a std::queue as they are received
+     *
+     * All relevant parameters are passed in via the single argument, which is
+     * really a dispatcherState struct. This is necessary because this function
+     * is run in a pthread.
+     *
+     * @param arg A reference dispatcherState struct casted to a void*
+     */
     void* watchDispatcher(void* arg);
+
+    /**
+     * Watch a database stream
+     *
+     * Listen to a CouchDB changes feed, turning header documents into
+     * RAT::DS::PackedRec objects and pushing them into a std::queue as they
+     * are received
+     *
+     * All relevant parameters are passed in via the single argument, which is
+     * really a dbState struct. This is necessary because this function
+     * is run in a pthread.
+     *
+     * @param arg A reference dbState struct casted to a void*
+     */
     void* watchDB(void* arg);
 
+    /**
+     * Convert a JSON document into a RAT::DS::PackedRec
+     * @param doc The document to convert to a PackedRec
+     * @return The PackedRec representation, or NULL if conversion failed
+     */
     //RAT::DS::PackedRec* docToRecord(Json::Value* doc);
 
 } // namespace avalanche

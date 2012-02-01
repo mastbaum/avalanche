@@ -16,7 +16,7 @@ server::server(std::string _addr) {
     socket->bind(address.c_str());
 }
 
-int server::sendObject(TObject* o) {
+int server::sendObject(RAT::DS::PackedRec* o) const {
     // use TBufferFile for TObject serialization
     TBufferFile bf(TBuffer::kWrite);
     bf.Reset();
