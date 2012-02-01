@@ -85,7 +85,7 @@ namespace avalanche {
              * @param _user Username for database authentication
              * @param _pass Password for database authentication
              */
-            void addDB(std::string _host, std::string _dbname, std::string _filterName, std::string _user, std::string _pass);
+            void addDB(std::string _host, std::string _dbname, std::string _filterName="", std::string _user="", std::string _pass="");
 
             /**
              * Get the lists of connected dispatchers and databases
