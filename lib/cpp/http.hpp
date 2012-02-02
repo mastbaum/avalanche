@@ -19,7 +19,7 @@ namespace avalanche {
      */
     class httpDownloader {
         public:
-            httpDownloader() : handle(0), noproxy_set(false) { }
+            httpDownloader() : handle(NULL), noproxy_set(false) { }
             ~httpDownloader();
 
             /** 
@@ -37,8 +37,7 @@ namespace avalanche {
             std::string fetch(const std::string &url);
 
         protected:
-            void setCurlOpts();
-            CURL *handle;
+            CURL* handle;
             bool noproxy_set;
             std::ostringstream contents;
     };

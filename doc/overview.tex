@@ -98,7 +98,7 @@ if __name__ == '__main__':
     cli = avalanche.Client('tcp://localhost:5024')
 
     # you can listen to an unlimited number of stream, using add_server
-    cli.ad_server('tcp://localhost:5025');
+    cli.add_server('tcp://localhost:5025');
 
     # receive RAT::DS::PackedRec objects
     while True:

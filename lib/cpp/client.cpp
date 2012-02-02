@@ -35,9 +35,6 @@ namespace avalanche {
         // zeromq cleanup
         delete context;
         delete socket;
-
-        // couchdb cleanup
-        delete downloader;
     }
 
     void client::addDispatcher(std::string _addr) {
@@ -49,14 +46,14 @@ namespace avalanche {
             streams["dispatcher"].push_back(_addr);
 
             // launch dispatcher thread with (shared) state
-            dispatcherState s;
-            s.queue = &queue;
-            s.queueMutex = queueMutex;
-            s.socket = socket;
-            s.flags = ZMQ_NOBLOCK;
+            dispatcherState* s = new dispatcherState();
+            s->queue = &queue;
+            s->queueMutex = queueMutex;
+            s->socket = socket;
+            s->flags = ZMQ_NOBLOCK;
 
             pthread_t* dispatcherThread = new pthread_t();
-            pthread_create(dispatcherThread, NULL, watchDispatcher, (void*) &s);
+            pthread_create(dispatcherThread, NULL, watchDispatcher, (void*) s);
             threads.push_back(dispatcherThread);
         }
 
@@ -64,26 +61,19 @@ namespace avalanche {
         socket->connect(_addr.c_str());
     }
 
-    void client::addDB(std::string _host, std::string _dbname, std::string _filterName, std::string _user, std::string _pass) {
+    void client::addDB(std::string _host, std::string _dbname, std::string _filterName) {
         streams["couchdb"].push_back(_host + "/" + _dbname);
 
-        if (!downloader) {
-            downloader = new httpDownloader();
-        }
-
         // launch couchdb-watching thread with given state
-        dbState s;
-        s.queue = &queue;
-        s.queueMutex = queueMutex;
-        s.downloader = downloader;
-        s.host = _host;
-        s.dbname = _dbname;
-        s.filterName = _filterName;
-        s.username = _user;
-        s.password = _pass;
+        dbState* s = new dbState();
+        s->queue = &queue;
+        s->queueMutex = queueMutex;
+        s->host = _host;
+        s->dbname = _dbname;
+        s->filterName = _filterName;
 
         pthread_t* couchThread = new pthread_t();
-        pthread_create(couchThread, NULL, watchDB, (void*) &s);
+        pthread_create(couchThread, NULL, watchDB, (void*) s);
         threads.push_back(couchThread);
     }
 

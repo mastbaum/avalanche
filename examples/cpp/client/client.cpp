@@ -10,6 +10,7 @@ int main(int argc, char* argv[]) {
     // connect to a few dispatchers
     client.addDispatcher("tcp://localhost:5025");
     client.addDispatcher("tcp://localhost:5024");
+    client.addDB("http://mastbaum:pw123@localhost:5984", "changes_perf");
 
     // receive RAT::DS::PackedRec objects
     while (1) {

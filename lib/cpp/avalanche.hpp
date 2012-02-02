@@ -78,14 +78,14 @@ namespace avalanche {
              * Connect to a CouchDB database, watching the changes feed for
              * header data. This may be called repeatedly to "watch" many
              * databases.
-             * @param _host Hostname of the CouchDB server
+             * @param _host Hostname of the CouchDB server, optionally
+             *              including login information like:
+             *              http://user:password@host:port/dbname
              * @param _dbname Name of the database to watch
              * @param _filter Name of the CouchDB filter function to apply to
              *                the changes feed
-             * @param _user Username for database authentication
-             * @param _pass Password for database authentication
              */
-            void addDB(std::string _host, std::string _dbname, std::string _filterName, std::string _user, std::string _pass);
+            void addDB(std::string _host, std::string _dbname, std::string _filterName="");
 
             /**
              * Get the lists of connected dispatchers and databases
@@ -102,9 +102,8 @@ namespace avalanche {
             TObject* recv(bool blocking=false);
 
         protected:
-            std::queue<TObject*> queue;  //< FIFO buffer of received objects
+            std::queue<TObject*> queue;  //< Buffer of received objects
             pthread_mutex_t* queueMutex; //< Mutex protection for queue
-            httpDownloader* downloader;  //< Helper class for downloads
             zmq::context_t* context;     //< ZeroMQ context for dispatcher
             zmq::socket_t* socket;       //< ZeroMQ socket for dispatcher
             std::vector<pthread_t*> threads; //< List of all "watcher" threads
@@ -135,12 +134,9 @@ namespace avalanche {
     struct dbState {
         std::queue<TObject*>* queue;
         pthread_mutex_t* queueMutex;
-        httpDownloader* downloader;
         std::string host;
         std::string dbname;
         std::string filterName;
-        std::string username;
-        std::string password;
     };
 
     /**
@@ -170,6 +166,9 @@ namespace avalanche {
      * @param arg A reference dbState struct casted to a void*
      */
     void* watchDB(void* arg);
+
+    static size_t ptr_to_stream(void* ptr, size_t size, size_t nmemb, void* stream);
+    static size_t db_changes_curl_callback(void* ptr, size_t size, size_t nmemb, void* stream);
 
     /**
      * Convert a JSON document into a RAT::DS::PackedRec
