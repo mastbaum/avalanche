@@ -36,21 +36,23 @@ avalanche::client
 -----------------
 ### Creating a Client ###
 
-    avalanche::client(std::string _addr)
+    avalanche::client()
 
 Example:
 
-    avalanche::client* client = new avalanche::client("tcp://localhost:7777");
+    avalanche::client* client = new avalanche::client();
+    client->addDispatcher("tcp://localhost:7777");
+    client->addDB("http://localhost:5984", "mydb");
 
-This will connect to an avalanche server running on localhost port 7777 via TCP.
+This will connect to an avalanche server running on localhost port 7777 via TCP and the changes feed of a CouchDB database at `http://localhost:5984/mydb`.
 
 ### Receiving Objects ###
 
-    void* avalanche::client::recvObject(int flags=0)
+    void* avalanche::client::recv(bool blocking=false)
 
 Example:
 
-    TH1F* h = (TH1F*) client->recvObject();
+    TH1F* h = (TH1F*) client->recv();
 
-By default, recvObject is blocking; `flags=ZMQ_NOBLOCK` will prevent the client from blocking. Note that `recvObject` returns a `void*` (like TBufferFile::ReadObjectAny), which must be cast appropriately.
+By default, recvObject is non-blocking; `blocking=true` will cause recv() to wait until data is available before returning. Note that `recv` returns a `TObject*`, which must be cast appropriately, likely using `TObject::IsA()`.
 
