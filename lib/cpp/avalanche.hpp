@@ -39,9 +39,9 @@ namespace avalanche {
             int sendObject(TObject* o) const;
 
         protected:
-            std::string address;     //< The local server address
-            zmq::context_t* context; //< ZeroMQ context for the server socket
-            zmq::socket_t* socket;   //< ZeroMQ server socket
+            std::string address;     //!< The local server address
+            zmq::context_t* context; //!< ZeroMQ context for the server socket
+            zmq::socket_t* socket;   //!< ZeroMQ server socket
     };
 
     /**
@@ -119,10 +119,10 @@ namespace avalanche {
             TObject* recv(bool blocking=false);
 
         protected:
-            std::queue<TObject*> queue;  //< Buffer of received objects
-            pthread_mutex_t* queueMutex; //< Mutex protection for queue
-            zmq::context_t* context;     //< ZeroMQ context for dispatcher
-            zmq::socket_t* socket;       //< ZeroMQ socket for dispatcher
+            std::queue<TObject*> queue;  //!< Buffer of received objects
+            pthread_mutex_t* queueMutex; //!< Mutex protection for queue
+            zmq::context_t* context;     //!< ZeroMQ context for dispatcher
+            zmq::socket_t* socket;       //!< ZeroMQ socket for dispatcher
             /** A map serving as a list of "watcher" threads and their state */
             std::map<pthread_t*, streamState*> threads;
             /**

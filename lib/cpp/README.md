@@ -1,8 +1,15 @@
 Avalanche C++ Library
 =====================
+Documentation
+-------------
+Generate doxygen documentation by running
+
+    doxygen Doxyfile
+
+HTML output is located at `doc/html/index.html`.
+
 Building
 --------
-
 To build the library, which includes the client and server, run
 
     make
