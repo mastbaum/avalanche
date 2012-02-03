@@ -27,10 +27,9 @@ class Client:
         '''handle termination signals cleanly by stopping and re-joining
         client threads
         '''
-        print 'Caught Ctrl-C, exiting...'
+        print 'Caught Ctrl-C, avalanche exiting...'
         self.dispatcher_client.stop()
         for c in self.couchdb_clients:
-            print 'Stopping', c
             c.stop()
         for thread in self.threads:
             thread.join()
@@ -38,7 +37,13 @@ class Client:
         sys.exit(0)
 
     def add_dispatcher(self, address):
-        '''connect to a dispatcher stream'''
+        '''connect to a dispatcher stream
+        
+        Args:
+            - address (string)
+                The address of the dispatcher stream to connect to, e.g.
+                tcp://localhost:5024
+        '''
         # create dispatcher client thread if necessary
         if not self.dispatcher_client:
             self.dispatcher_client = dispatch.DispatcherStream(self.queue)
@@ -52,10 +57,24 @@ class Client:
         # add address to the list
         self.streams['dispatcher'].append(address)
 
-    def add_db(self, host, dbname, username=None, password=None):
-        '''connect to a couch database'''
+    def add_db(self, host, dbname, map_function, username=None, password=None):
+        '''connect to a couch database
+
+        Args:
+            - host (string)
+                Hostname of the CouchDB server
+            - dbname (string)
+                Name of the database
+            - map_function (callable)
+                A function (or other callable) which converts database
+                documents (dictionary-like objects) into ROOT.TObjects
+            - username (string), *optional*
+                Username for CouchDB server authentication
+            - password (string), *optional*
+                Password for CouchDB server authentication
+        '''
         # create couchdb client
-        c = db.CouchDB(self.queue, host, dbname, username=username, password=password)
+        c = db.CouchDB(self.queue, host, dbname, map_function, username=username, password=password)
         self.couchdb_clients.append(c)
 
         # create couchdb client thread
@@ -67,7 +86,14 @@ class Client:
         self.streams['couchdb'].append(host + '/' + dbname)
 
     def recv(self, blocking=False):
-        '''receive the next piece of data from connected data sources'''
+        '''receive the next piece of data from connected data sources
+        
+        Args:
+            - blocking (bool), *optional*
+                If true, wait for data to arrive before returning. If false,
+                return immediately, returning None if there is no data
+                available.
+        '''
         try:
             return self.queue.get(blocking)
         except Queue.Empty:

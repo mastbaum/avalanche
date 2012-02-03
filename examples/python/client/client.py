@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import avalanche
+import avalanche.ratdb
 import signal
 import sys
 from rat import ROOT
@@ -18,7 +19,8 @@ if __name__ == '__main__':
     client.add_dispatcher('tcp://localhost:5024')
 
     # connect client to a couchdb server at localhost:5984/dispatch
-    #client.add_db('http://localhost:5984', 'dispatch', filter=dispatch/headers)
+    doc_object_map = avalanche.ratdb.doc_to_record
+    client.add_db('http://localhost:5984', 'changes_perf', doc_object_map,username='mastbaum',password='pw123') # filter=dispatch/headers)
 
     # receive RAT::DS::PackedRec objects
     while True:

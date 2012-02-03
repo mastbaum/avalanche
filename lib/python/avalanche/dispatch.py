@@ -32,10 +32,6 @@ class DispatcherStream:
         '''
         self.socket.connect(address)
 
-    def set_tclass(self, cls):
-        '''set the ROOT TClass received objects are interpreted as'''
-        self.cls = cls
-
     def stop(self):
         '''terminate the run() loop, waiting for any current call to recv()
         to complete

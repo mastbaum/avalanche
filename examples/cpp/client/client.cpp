@@ -11,8 +11,10 @@ int main(int argc, char* argv[]) {
     // connect to a few dispatchers
     client.addDispatcher("tcp://localhost:5025");
     client.addDispatcher("tcp://localhost:5024");
+
+    // connect to couchdb
     avalanche::docObjectMap map = &(avalanche::docToRecord);
-    client.addDB("http://mastbaum:pw123@localhost:5984", "changes_perf", map);
+    client.addDB("http://username:password@localhost:5984", "db_name", map);
 
     // receive RAT::DS::PackedRec objects
     while (1) {
