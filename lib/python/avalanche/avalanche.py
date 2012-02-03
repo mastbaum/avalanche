@@ -39,7 +39,7 @@ class Client:
     def add_dispatcher(self, address):
         '''connect to a dispatcher stream
         
-        Args:
+        Parameters:
             - address (string)
                 The address of the dispatcher stream to connect to, e.g.
                 tcp://localhost:5024
@@ -60,7 +60,7 @@ class Client:
     def add_db(self, host, dbname, map_function, username=None, password=None):
         '''connect to a couch database
 
-        Args:
+        Parameters:
             - host (string)
                 Hostname of the CouchDB server
             - dbname (string)
@@ -88,7 +88,7 @@ class Client:
     def recv(self, blocking=False):
         '''receive the next piece of data from connected data sources
         
-        Args:
+        Parameters:
             - blocking (bool), *optional*
                 If true, wait for data to arrive before returning. If false,
                 return immediately, returning None if there is no data

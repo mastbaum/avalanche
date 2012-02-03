@@ -1,5 +1,14 @@
 Avalanche Client Python Package
 ===============================
+API Documenation
+----------------
+For detailed documentation of the avalanche client API, build the Sphinx documentation in `doc` (requires sphinx):
+
+    $ cd doc
+    $ make html
+
+HTML output is located at `doc/_build/index.html`.
+
 Installation
 ------------
 To install the package, run
