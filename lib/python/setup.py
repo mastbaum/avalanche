@@ -6,7 +6,7 @@ def read(fname):
 
 setup(
     name='avalanche',
-    version='1.0',
+    version='1.5',
     description='ROOT object dispatcher client',
     author='Andy Mastbaum',
     author_email='mastbaum@hep.upenn.com',
