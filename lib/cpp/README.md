@@ -49,9 +49,25 @@ Example:
 
     avalanche::client* client = new avalanche::client();
     client->addDispatcher("tcp://localhost:7777");
-    client->addDB("http://localhost:5984", "mydb");
+    client->addDB("http://localhost:5984", "mydb", doc_object_map);
 
 This will connect to an avalanche server running on localhost port 7777 via TCP and the changes feed of a CouchDB database at `http://localhost:5984/mydb`.
+
+#### Talking to CouchDB ####
+The avalanche client always returns a `TObject`, so when connecting to a database you must give it a pointer to a function that will convert CouchDB documents. This is the `doc_object_map` in the above example.
+
+This function must have a prototype like:
+
+    static TObject* myMapFunction(Json::Value& v);
+    
+For convenience, this pointer type is given a name in avalanche: `avalanche::docObjectMap`, so you can do this:
+
+    avalanche::docObjectMap doc_object_map = &myMapFunction;
+    client->addDB("http://localhost:5984", "mydb", doc_object_map);
+
+For SNO+ users, this mapping function is provided. Include `avalanche_rat.hpp` and use:
+
+    avalanche::docObjectMap doc_object_map = &(avalanche::docToRecord);
 
 ### Receiving Objects ###
 
