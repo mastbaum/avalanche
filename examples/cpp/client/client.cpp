@@ -2,6 +2,7 @@
 #include <TH1F.h>
 #include <RAT/DS/PackedEvent.hh>
 #include <avalanche.hpp>
+#include <avalanche_rat.hpp>
 
 int main(int argc, char* argv[]) {
     // create a client
@@ -10,7 +11,8 @@ int main(int argc, char* argv[]) {
     // connect to a few dispatchers
     client.addDispatcher("tcp://localhost:5025");
     client.addDispatcher("tcp://localhost:5024");
-    client.addDB("http://mastbaum:pw123@localhost:5984", "changes_perf");
+    avalanche::docObjectMap map = &(avalanche::docToRecord);
+    client.addDB("http://mastbaum:pw123@localhost:5984", "changes_perf", map);
 
     // receive RAT::DS::PackedRec objects
     while (1) {

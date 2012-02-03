@@ -1,4 +1,3 @@
-#include <iostream>
 #include <zmq.hpp>
 #include <pthread.h>
 #include <stdint.h>
@@ -8,6 +7,7 @@
 #include <TClass.h>
 
 #include "avalanche.hpp"
+#include "stream.hpp"
 
 namespace avalanche {
 
@@ -17,10 +17,14 @@ namespace avalanche {
     }
 
     client::~client() {
-        // destroy threads
-        for (size_t i=0; i<threads.size(); i++) {
-            pthread_join(*threads[i], NULL);
-            delete threads[i];
+        // destroy threads, then state
+        std::map<pthread_t*, streamState*>::iterator it;
+        for (it = threads.begin(); it != threads.end(); ++it) {
+            pthread_join(*((*it).first), NULL);
+            delete (*it).first;
+        }
+        for (it = threads.begin(); it != threads.end(); ++it) {
+            delete (*it).second;
         }
 
         // queue cleanup
@@ -54,14 +58,14 @@ namespace avalanche {
 
             pthread_t* dispatcherThread = new pthread_t();
             pthread_create(dispatcherThread, NULL, watchDispatcher, (void*) s);
-            threads.push_back(dispatcherThread);
+            threads[dispatcherThread] = s;
         }
 
         // add a connection to the socket
         socket->connect(_addr.c_str());
     }
 
-    void client::addDB(std::string _host, std::string _dbname, std::string _filterName) {
+    void client::addDB(std::string _host, std::string _dbname, docObjectMap _map, std::string _filterName) {
         streams["couchdb"].push_back(_host + "/" + _dbname);
 
         // launch couchdb-watching thread with given state
@@ -70,11 +74,12 @@ namespace avalanche {
         s->queueMutex = queueMutex;
         s->host = _host;
         s->dbname = _dbname;
+        s->map = _map;
         s->filterName = _filterName;
 
         pthread_t* couchThread = new pthread_t();
         pthread_create(couchThread, NULL, watchDB, (void*) s);
-        threads.push_back(couchThread);
+        threads[couchThread] = s;
     }
 
     TObject* client::recv(bool blocking) {

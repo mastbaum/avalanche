@@ -7,9 +7,7 @@
 #include <queue>
 #include <pthread.h>
 #include <zmq.hpp>
-//#include <json_value.h>
-
-#include "http.hpp"
+#include <json/value.h>
 
 class TObject;
 
@@ -44,6 +42,23 @@ namespace avalanche {
             std::string address;     //< The local server address
             zmq::context_t* context; //< ZeroMQ context for the server socket
             zmq::socket_t* socket;   //< ZeroMQ server socket
+    };
+
+    /**
+     * A docObjectMap is a pointer to a function that turns a document from
+     * CouchDB into a TObject. Such a function must be defined by the user and
+     * specified for a new database connection.
+     * @see addDB()
+     */
+    typedef TObject* (*docObjectMap)(Json::Value&);
+
+    /**
+     * Container holding the state of a data stream
+     * Used to pass state information to a stream's "watcher" thread
+     */
+    struct streamState {
+        std::queue<TObject*>* queue;
+        pthread_mutex_t* queueMutex;
     };
 
     /**
@@ -82,10 +97,12 @@ namespace avalanche {
              *              including login information like:
              *              http://user:password@host:port/dbname
              * @param _dbname Name of the database to watch
+             * @param _map A pointer to a function converting JSON to TObject
+             *             @see docObjectMap
              * @param _filter Name of the CouchDB filter function to apply to
              *                the changes feed
              */
-            void addDB(std::string _host, std::string _dbname, std::string _filterName="");
+            void addDB(std::string _host, std::string _dbname, docObjectMap _map, std::string _filterName="");
 
             /**
              * Get the lists of connected dispatchers and databases
@@ -106,76 +123,14 @@ namespace avalanche {
             pthread_mutex_t* queueMutex; //< Mutex protection for queue
             zmq::context_t* context;     //< ZeroMQ context for dispatcher
             zmq::socket_t* socket;       //< ZeroMQ socket for dispatcher
-            std::vector<pthread_t*> threads; //< List of all "watcher" threads
+            /** A map serving as a list of "watcher" threads and their state */
+            std::map<pthread_t*, streamState*> threads;
             /**
              * A map with lists of connected streams
              * e.g. streams["dispatcher"] -> ["tcp://localhost:5024", ...]
              */
             std::map<std::string, std::vector<std::string> > streams;
     };
-
-    /**
-     * Container for dispatcher stream state
-     * Used to pass state information to a watchDispatcher thread
-     * @see watchDispatcher()
-     */
-    struct dispatcherState {
-        std::queue<TObject*>* queue;
-        pthread_mutex_t* queueMutex;
-        zmq::socket_t* socket;
-        int flags;
-    };
-
-    /**
-     * Container for CouchDB stream state
-     * Used to pass state information to a watchDB thread
-     * @see watchDB()
-     */
-    struct dbState {
-        std::queue<TObject*>* queue;
-        pthread_mutex_t* queueMutex;
-        std::string host;
-        std::string dbname;
-        std::string filterName;
-    };
-
-    /**
-     * Watch a dispatcher stream
-     *
-     * Listen to a ZeroMQ socket, deserialized TObjects and pushing them into a
-     * std::queue as they are received
-     *
-     * All relevant parameters are passed in via the single argument, which is
-     * really a dispatcherState struct. This is necessary because this function
-     * is run in a pthread.
-     *
-     * @param arg A reference dispatcherState struct casted to a void*
-     */
-    void* watchDispatcher(void* arg);
-
-    /**
-     * Watch a database stream
-     *
-     * Listen to a CouchDB changes feed, turning header documents into
-     * TObjects and pushing them into a std::queue as they are received
-     *
-     * All relevant parameters are passed in via the single argument, which is
-     * really a dbState struct. This is necessary because this function
-     * is run in a pthread.
-     *
-     * @param arg A reference dbState struct casted to a void*
-     */
-    void* watchDB(void* arg);
-
-    static size_t ptr_to_stream(void* ptr, size_t size, size_t nmemb, void* stream);
-    static size_t db_changes_curl_callback(void* ptr, size_t size, size_t nmemb, void* stream);
-
-    /**
-     * Convert a JSON document into a RAT::DS::PackedRec
-     * @param doc The document to convert to a PackedRec
-     * @return The PackedRec representation, or NULL if conversion failed
-     */
-    //TObject* docToRecord(Json::Value* doc);
 
 } // namespace avalanche
 

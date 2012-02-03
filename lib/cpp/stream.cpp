@@ -1,6 +1,7 @@
-#include <iostream>
-#include <assert.h>
+#include <sstream>
 #include <zmq.hpp>
+#include <assert.h>
+#include <curl/curl.h>  
 #include <TBuffer.h>
 #include <TBufferFile.h>
 
@@ -8,19 +9,10 @@
 #include "json/reader.h"
 #include "json/value.h"
 
-#include <curl/curl.h>  
 #include "avalanche.hpp"
+#include "stream.hpp"
 
 namespace avalanche {
-    class jsonStreamHandler {
-        public:
-            jsonStreamHandler(Json::Reader* _reader, std::queue<TObject*>* _queue) : reader(_reader), queue(_queue) {}
-            void push(std::string data);
-        protected:
-            Json::Reader* reader;
-            std::queue<TObject*>* queue;
-    };
-
 
     void* watchDispatcher(void* arg) {
         dispatcherState* s = (dispatcherState*) arg;
@@ -69,13 +61,12 @@ namespace avalanche {
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, ptr_to_stream);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &data);
         curl_easy_perform(curl);
-        std::cout << "data: " << data.str() << std::endl;
+
         Json::Reader* reader = new Json::Reader();
         Json::Value v;
         assert(reader->parse(data.str(), v, false));
         assert(v.isObject());
         int update_seq = v["update_seq"].asInt();
-        std::cout << "update_seq: " << update_seq << std::endl;
 
         std::stringstream update_seq_ss;
         update_seq_ss << update_seq;
@@ -86,41 +77,47 @@ namespace avalanche {
             query += ("&filter=" + s->filterName);
         }
 
-        jsonStreamHandler* handler = new jsonStreamHandler(reader, s->queue);
-
         curl_easy_setopt(curl, CURLOPT_URL, query.c_str());
-        curl_easy_setopt(curl, CURLOPT_HEADER, 1);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, db_changes_curl_callback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, handler);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, db_change_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, s);
 
+        // start request
         curl_easy_perform(curl);
 
         curl_easy_cleanup(curl);
         return NULL;
     }
 
-    void jsonStreamHandler::push(std::string data) {
-        std::cout << "data: " << data << std::endl;
-    }
-
-    static size_t ptr_to_stream(void *ptr, size_t size, size_t nmemb, void *stream) {
+    size_t ptr_to_stream(void* ptr, size_t size, size_t nmemb, void* stream) {
         std::ostringstream* doc = static_cast<std::ostringstream*>(stream);
         char* data = static_cast<char*>(ptr);
 
-        for (size_t i=0; i < size*nmemb; i++) {
+        for (size_t i=0; i < size*nmemb; i++)
             (*doc) << data[i];
-        }
 
         return size * nmemb;
     }
 
-    static size_t db_changes_curl_callback(void *ptr, size_t size, size_t nmemb, void *handler) {
-        jsonStreamHandler* h = static_cast<jsonStreamHandler*>(handler);
+    size_t db_change_callback(void* ptr, size_t size, size_t nmemb, void* state) {
+        dbState* s = (dbState*) state;
 
         std::ostringstream doc("");
         ptr_to_stream(ptr, size, nmemb, (void*)&doc);
 
-        h->push(doc.str());
+        if (doc.str().find("{") != std::string::npos) {
+            Json::Reader reader;
+            Json::Value v;
+            reader.parse(doc.str(), v, false);
+
+            if (v.isObject()) {
+                TObject* o = (*(s->map))(v["doc"]);
+                if (o) {
+                    pthread_mutex_lock(s->queueMutex);
+                    s->queue->push(o);
+                    pthread_mutex_unlock(s->queueMutex);
+                }
+            }
+        }
 
         return size * nmemb;
     }
