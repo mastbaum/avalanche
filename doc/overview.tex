@@ -1,20 +1,37 @@
 \documentclass{article}
+\newcommand{\hiddensubsection}[1]{
+\stepcounter{subsection}
+\subsection*{\arabic{section}.\arabic{subsection}\hspace{1em}{#1}}}
+\newcommand{\hiddensubsubsection}[1]{
+\stepcounter{subsubsection}
+\subsubsection*{\arabic{section}.\arabic{subsection}.\arabic{subsubsection}\hspace{1em}{#1}}}
 \usepackage[top=1in,left=1in,right=1in,bottom=1in]{geometry}
 \usepackage{hyperref}
+\usepackage{graphicx}
 \title{Avalanche: An Event Dispatcher for SNO+\\{\it \small (as in, a lot of sno(+), very fast)}}
 \author{Andy Mastbaum\footnote{\href{mailto:mastbaum@hep.upenn.edu}{mastbaum@hep.upenn.edu}}\\\small{\it The University of Pennsylvania}}
 \begin{document}
 \maketitle
+\tableofcontents
 \section{Introduction}
-The ``dispatcher'' is the server software responsible for providing a stream of built events to various client software. Currently-planned client software includes the event viewer and detector monitoring tools. The dispatcher requires:
+The ``dispatcher'' is the server software responsible for providing a stream of built events to various client software. Currently, client software includes the event viewer and detector monitoring tools. The dispatcher requires:
 
 \begin{description}
-\item[High Throughput] The dispatcher must be able to keep up with the maximum data rate of 450 Mbps, simultaneously to all clients.
+\item[High Throughput] The dispatcher must be able to keep up with the maximum data rate, simultaneously to all clients.
 \item[Scalability] The dispatcher should support a large number of concurrent client connections without impact on performance.
-\item[Compatibility] The dispatched data stream must be reasonably language-agnostic, since the language of the client software is unknown.
+\item[Compatibility] The dispatched data stream must be reasonably language-agnostic, as client software may be written in a variety of languages.
 \end{description}
 
-An obvious platform choice would be ROOT's network I/O classes ({\tt TPSocket}, etc.). However, the next-generation socket library ZeroMQ\footnote{\href{http://www.zeromq.org}{http://www.zeromq.org}} provides a superior alternative. ZeroMQ is naturally asynchronous, natively supports fan-out, and implementations are typically faster than UNIX sockets. ZeroMQ's fan-out allows clients to ``subscribe'' to a stream, optionally applying a filter (e.g. only events, no run headers). Bindings exist for all major languages.
+Relative to SNO, the SNO+ data stream will be split into two paths: event-level data which passes through the event builder, and run-level headers which are written to the database by the DAQ, manipulator control, and other systems. This means that monitoring applications may need to watch two sources: a ``traditional'' network dispatch from the builder, and the changes in a CouchDB database, merging them as shown in Figure \ref{avalanche_stream}.
+\begin{figure}
+\begin{centering}
+\includegraphics[scale=0.75]{figures/flow.pdf}
+\caption{Data flow into avalanche clients}
+\label{avalanche_stream}
+\end{centering}
+\end{figure}
+
+Python client and C++ server and client libraries to perform these tasks (excluding writing to CouchDB) are included in with avalanche in {\tt lib}, and examples in both languages are given in the {\tt examples/} directory.
 
 \section{Data Format}
 It has been decided that the ``packed'' events coming from the event builder will be in a ROOT format, with a structure developed by G. D. Orebi Gann and J. Kaspar. The packed format preserves the ``raw'' data structures from the detector front-end: for example, charge and time data is stored in 96-bit PMT bundles. This is in contrast the `full' or `unpacked' data structure used in RAT, where values are broken into separate, histogrammable fields.
@@ -23,66 +40,71 @@ The packed data is essentially a stream of {\tt TObjects}, which may be event da
 
 A full listing of packed format classes and their members is given in the appendix.
 
-\section{Network Layer}
-The avalanche server broadcasts {\tt PackedRec} objects, serialized using a ROOT {\tt TBufferFile}. On the client side, software must create a {\tt TBufferFile} using the packet data, read the {\tt PackedRec} object out of it, and cast the {\tt PackedRec}'s {\tt Rec} object to the correct type based on the value of {\tt RecordType}. C++ and Python libraries to perform this deserialization are included in with avalanche, and examples in both languages are given in the {\tt examples/} directory.
-
-\section{CouchDB Integration}
-Avalanche clients may also connect to a Couch database and receive headers as they are pushed in by the DAQ. These notifications are retrieved via the CouchDB changes feed\footnote{\href{http://wiki.apache.org/couchdb/HTTP\_database\_API\#Changes}{http://wiki.apache.org/couchdb/HTTP\_database\_API\#Changes}} and the {\tt couchdb-python} Python package\footnote{\href{http://code.google.com/p/couchdb-python/}{http://code.google.com/p/couchdb-python/}}. Headers from CouchDB are interleaved with the rest of the data stream and indistinguishable from those received from an avalanche server.
-
 \section{Dispatched Data in RAT}
-Using the avalanche libraries, an input producer and output processor have been developed that allows RAT to interact with dispatched data. Simulated events may be dispatched on the network, simulating the real data flow chain, and RAT can read in dispatched events, which may be used for online processing or writing monitoring tools as RAT processors.
+RAT includes an input producer and output processor for interaction with dispatched data. Monte Carlo events may be dispatched on the network, simulating the real data flow chain, and RAT can read in dispatched events, which may be used for online processing or writing monitoring tools as RAT processors.
 
 The code to interact with dispatched data streams was committed to SVN in r652 (git revision\\ f5387a0b495ca4b719a3a7e41487920b40f463bb). Documentation can be found in \href{https://www.snolab.ca/snoplus/private/DocDB/cgi/ShowDocument?docid=1300}{SNO+-doc-1300}.
 
 \section{Dispatching Detector Events}
-A C++ library with a very simple API is provided in the {\tt lib/cpp} directory.
+A C++ library with a very simple API is provided in the {\tt lib/cpp} directory. {\tt libavalanche} provides both a dispatcher client {\tt avalanche::client} and server {\tt avalanche::server}. To build it, run {\tt make}. This will create a shared library {\tt libavalanche.so} which you may link into your application.
 
 A server consists of a single {\tt avalanche::server} object, constructed with a given socket address. The {\tt avalanche::server} has one method, {\tt sendObject}, which dispatches a ROOT {\tt TObject}. For example, to send a histogram {\tt TH1F* h1}:
 
 \begin{verbatim}
  avalanche::server* serv = new avalanche::server("tcp://localhost:5024");
- serv->sendObject(h1);
+ if (serv->sendObject(h1) != 0)
+   std::cout << "Couldn't send object" << std::endl;
 \end{verbatim}
-Any number of clients may be subscribed to the stream on port 5024.
+Any number of clients may be subscribed to the stream on port 5024. {\tt sendObject} returns nonzero if unsuccessful; checking the return value is recommended.
 
 \section{Writing Dispatcher Clients}
 Client software connects to a stream and/or database, receives and reconstructs ROOT objects, and does something with these objects. Libraries for C++ and Python are provided in {\tt lib/} that manage the first two steps.
 
 \subsection{C++}
-{\tt libavalanche} provides a dispatcher client {\tt avalanche::client}.
+{\tt libavalanche}, located in {\tt lib/cpp} provides both a dispatcher client {\tt avalanche::client} and server {\tt avalanche::server}. To build it, run {\tt make}. This will create a shared library {\tt libavalanche.so} which you may link into your application. You will also need to include the library header {\tt avalanche.hpp} and, if connecting to CouchDB, {\tt avalanche\_rat.hpp}.
 
 Consider the following example:
-
 \begin{verbatim}
 #include <iostream>
 #include <TH1F.h>
 #include <RAT/DS/PackedEvent.hh>
 #include <avalanche.hpp>
+#include <avalanche_rat.hpp>
 
 int main(int argc, char* argv[]) {
-  // create a client, listening for objects on port 5024
-  avalanche::client client("tcp://localhost:5024");
+    // create a client
+    avalanche::client client;
 
-  // you can listen to an unlimited number of stream, using addServer
-  client.addServer("tcp://localhost:5025");
+    // connect to a few dispatchers
+    client.addDispatcher("tcp://localhost:5025");
+    client.addDispatcher("tcp://localhost:5024");
 
-  // receive RAT::DS::PackedRec objects
-  while (1) {
-    RAT::DS::PackedRec* rec = (RAT::DS::PackedRec*) client.recvObject(RAT::DS::PackedRec::Class());
-    if (rec)
-      std::cout << "Received PackedRec of type " << rec->RecordType << std::endl;
-    else
-      std::cout << "Error deserializing message data" << std::endl;
-    delete rec;
-  }
+    // connect to couchdb
+    avalanche::docObjectMap map = &(avalanche::docToRecord);
+    client.addDB("http://username:password@localhost:5984", "db_name", map);
 
-  return 0;
+    // receive RAT::DS::PackedRec objects
+    while (1) {
+        RAT::DS::PackedRec* rec = (RAT::DS::PackedRec*) client.recv();
+        if (rec) {
+            std::cout << "Received PackedRec of type " << rec->RecordType << std::endl;
+            if (rec->RecordType == 1) {
+                RAT::DS::PackedEvent* event = dynamic_cast<RAT::DS::PackedEvent*> (rec->Rec);
+                std::cout << " NHIT = " << event->NHits << std::endl;
+            }
+        }
+        else
+            continue;
+        delete rec;
+    }
+
+    return 0;
 }
 \end{verbatim}
 
-First, we set up the client by giving it a server address to connect to. In this example, we also connect to one more server. You may connect to an unlimited number of streams; the packets received are interleaved, as if they arrived from one source. Next, we receive ROOT objects with {\tt recvObject}. The class must be specified for the deserialization step. Now we are ready to operate on the data. In this example we just print the record type; a real client would at this point cast the member {\tt Rec} object to the correct type, extract data, and perform some operations.
+First we create a client object, then we connect to a few dispatcher streams. You may connect to an unlimited number of streams; the packets received are interleaved, as if they arrived from one source. Next, we connect to a CouchDB server. Note the variable {\tt map} -- this tells avalanche how to turn CouchDB documents into ROOT {\tt TObjects}. This function is provided for SNO+ use in {\tt avalanche\_rat.hpp} and can be used exactly as shown\footnote{For more details, see {\tt lib/cpp/README.md}.}. Finally, we receive ROOT objects with {\tt recv}. Now we are ready to operate on the data. In this example we just print the record type and, if the record contains event data, the total NHIT.
 
-Note that {\tt recvObject} is blocking by default (it will wait until data is received). To use non-blocking I/O, provide the {\tt ZMQ\_NOBLOCK} flag as the second argument. When used in this mode, {\tt recvObject} will return {\tt NULL} when no data is available.
+Note that {\tt recv} is non-blocking by default, and if no data is available will return NULL. To use blocking I/O, where {\tt recv} will wait until data is received to return, use {\tt recv(true)}.
 
 \subsection{Python}
 The {\tt avalanche} Python package in {\tt lib/python} provides a dispatcher client {\tt avalanche.Client}. To install this package on your system, run {\tt \$ python setup.py install}.
@@ -91,53 +113,73 @@ Consider the following example:
 
 \begin{verbatim}
 import avalanche
+import avalanche.ratdb
+import sys
 from rat import ROOT
 
 if __name__ == '__main__':
-    # create client listening to localhost port 5024
-    cli = avalanche.Client('tcp://localhost:5024')
+    # create avalanche client
+    client = avalanche.Client()
 
-    # you can listen to an unlimited number of stream, using add_server
-    cli.add_server('tcp://localhost:5025');
+    # connect client to a dispatcher stream localhost port 5024
+    client.add_dispatcher('tcp://localhost:5024')
+
+    # connect client to a couchdb server at localhost:5984/dispatch
+    doc_object_map = avalanche.ratdb.doc_to_record
+    client.add_db('http://localhost:5984', 'changes_perf', doc_object_map,
+                  username='username', password='password')
 
     # receive RAT::DS::PackedRec objects
     while True:
-        rec = cli.recv_object(ROOT.RAT.DS.PackedRec.Class())
-
-        if rec:
+        rec = client.recv()
+        if rec is not None:
             print 'Received PackedRec of type', rec.RecordType
-        else:
-            print 'Error deserializing message data'
 \end{verbatim}
-First, we set up the client by giving it a server address to connect to. In this example, we also connect to one more server. You may connect to an unlimited number of streams; the packets received are interleaved, as if they arrived from one source. Next, we receive ROOT objects with {\tt recv\_object}. The class must be specified for the deserialization step. Now we are ready to operate on the data. In this example we just print the record type; a real client would at this point cast the member {\tt Rec} object to the correct type, extract data, and perform some operations.
+First we create a client object, then we connect to a few dispatcher streams. You may connect to an unlimited number of streams; the packets received are interleaved, as if they arrived from one source. Next, we connect to a CouchDB server. Note the variable {\tt doc\_object\_map} -- this tells avalanche how to turn CouchDB documents into ROOT {\tt TObjects}. This function is provided for SNO+ use in module {\tt avalanche.ratdb} and can be used exactly as shown\footnote{For more details, see {\tt lib/python/README.md}.}. Finally, we receive ROOT objects with {\tt recv}. Now we are ready to operate on the data. In this example we just print the record type a real client would at this point cast the member Rec object to the correct type, extract data, and perform some operations.
 
-Note that in Python, there is no need to cast the object returned by {\tt recv\_object}, as this is taken care of by PyROOT.
+Note that {\tt recv} is non-blocking by default, and if no data is available will return NULL. To use blocking I/O, where {\tt recv} will wait until data is received to return, use {\tt recv(blocking=True)}.
 
-As above, {\tt recv\_object} is blocking by default (waits until data is available). To use non-blocking I/O, provide the {\tt flags=zmq.NOBLOCK} argument. When used in this mode, {\tt recv\_object} will return {\tt None} when no data is available.
+Note that in Python there is no need to cast the object returned by {\tt recv}, as this is taken care of by PyROOT.
 
 \subsection{Other Languages}
-
 Many other languages are supported by ZeroMQ, and at least Ruby has supported ROOT bindings. Implementations will be similar to those given in C++ and Python. For examples of ZeroMQ in your language, see \href{https://github.com/imatix/zguide/tree/master/examples}{https://github.com/imatix/zguide/tree/master/examples}.
 
-A client must `subscribe' to a ZeroMQ TCP `publish' socket and deserialize ROOT {\tt TObjects} using a {\tt TBufferFile}. The former is achieved with the ZeroMQ API: set up a context and a subscriber socket, and connect that socket to one or more server addresses. The latter is simple in principle -- create a {\tt TBufferFile}, set the buffer to the packet contents, and read out the appropriate class. This may be complicated (as it is in Python) by the language's hadling of string termination; care must be taken to ensure that the buffer is not treated as a string and truncated at the first null byte. For guidance, see the C++ and Python client library source code in {\tt lib}.
+As described above, a client must `subscribe' to a ZeroMQ TCP `publish' socket and deserialize ROOT {\tt TObjects} using a {\tt TBufferFile}. The former is achieved with the ZeroMQ API: set up a context and a subscriber socket, and connect that socket to one or more server addresses. The latter is simple in principle -- create a {\tt TBufferFile}, set the buffer to the packet contents, and read out the appropriate class. This may be complicated (as it is in Python) by the language's hadling of string termination; care must be taken to ensure that the buffer is not treated as a string and truncated at the first null byte. For guidance, see the C++ and Python client library source code in {\tt lib}.
 
+CouchDB bindings also exist for many languages, but none are essential since Couch communicates using JSON strings sent over HTTP. To interact with a database, code needs to make HTTP queries and convert JSON strings into native objects. All major languages have such facilities. If no CouchDB library exists for your language, details on the CouchDB changes API are available at\\ \href{http://wiki.apache.org/couchdb/HTTP\_database\_API\#Changes}{http://wiki.apache.org/couchdb/HTTP\_database \_API\#Changes}.
 
-CouchDB bindings also exist for many languages, but none are essential since Couch communicates using JSON strings sent over HTTP. To interact with a database, code needs to make HTTP queries and convert JSON strings into native objects. All major languages have such facilities. If no library exists for your language, details on the CouchDB changes API are available at \href{http://wiki.apache.org/couchdb/HTTP\_database\_API\#Changes}{http://wiki.apache.org/couchdb/HTTP\_database \_API\#Changes}.
+\section{Details}
+This section provides an overview or the implementations in the C++ and Python libraries, for those interested in modifying or extending them. Further details including complete API documentation can be found in {\tt lib/cpp} (README and doxygen) and {\tt lib/python} (README and sphinx).
+
+\hiddensubsection{Architecture}
+A ZeroMQ subscribe socket and a CouchDB changes feed are very different, so it is nontrivial to merge into one homogenous stream. This is accomplished using several threads which push received objects into a FIFO queue. The client's {\tt recv} method pops an element out of this queue (or {\tt None}/{\tt NULL} if it is empty). The blocking/non-blocking distinction doesn't really propagate to the network level: the ZeroMQ listener is run in a non-blocking mode, and the CouchDB listener executes a callback.
+
+\paragraph*{ZeroMQ} ROOT's network classes ({\tt TPSocket}, etc.) were considered for network I/O; however, the next-generation socket library ZeroMQ\footnote{\href{http://www.zeromq.org}{http://www.zeromq.org}} provides a superior alternative. ZeroMQ is naturally asynchronous, natively supports fan-out, and implementations are typically faster than UNIX sockets. ZeroMQ's fan-out allows clients to ``subscribe'' to a stream.
+
+\hiddensubsection{ROOT Dispatcher Stream}
+The avalanche server broadcasts {\tt TObject}s serialized using a ROOT {\tt TBufferFile}. On the client side, software must create a {\tt TBufferFile} using the packet data, read the {\tt PackedRec} object out of it, and cast the {\tt PackedRec}'s {\tt Rec} object to the correct type based on the value of {\tt RecordType}. 
+
+Since a ZeroMQ subscribe socket may connect to many publishers (servers), only one dispatcher-watching thread per client is needed. 
+
+\hiddensubsection{CouchDB}
+Avalanche clients may also connect to a Couch database and receive headers as they are pushed in by the DAQ. These notifications are retrieved via the CouchDB changes feed\footnote{\href{http://wiki.apache.org/couchdb/HTTP\_database\_API\#Changes}{http://wiki.apache.org/couchdb/HTTP\_database\_API\#Changes}}. Monitoring changes is done in Python using the {\tt couchdb-python} package\footnote{\href{http://code.google.com/p/couchdb-python/}{http://code.google.com/p/couchdb-python/}} and in C++ {\tt libcurl} and {\tt JSON-CPP}. Headers from CouchDB are converted into {\tt TObject}s using a user-defined mapping function then pushed into the queue, and so interleaved with the rest of the data stream and indistinguishable from those received from an avalanche server. The mapping function takes a CouchDB document (dictionary-like in Python, a {\tt Json::Value} in C++) and returns a {\tt TObject*}.
+
+CouchDB connections are independent, and each connection gets its own ``watcher'' thread.
 
 \clearpage
 \section{Appendix: Packed Data Model}
 This is a complete listing of all packed format classes, taken from RAT's PackedEvent.hh.
 
-\subsection{class GenericRec : public TObject}
+\hiddensubsection{class GenericRec : public TObject}
 (empty)
 
-\subsection{class PackedRec : public TObject}
+\hiddensubsection{class PackedRec : public TObject}
 \begin{itemize}
 \item UInt\_t RecordType
 \item GenericRec *Rec
 \end{itemize}
 
-\subsubsection{Record Types}
+\hiddensubsubsection{Record Types}
 \begin{enumerate}
 \setcounter{enumi}{-1}
 \item Empty
@@ -149,7 +191,7 @@ This is a complete listing of all packed format classes, taken from RAT's Packed
 \item EPED
 \end{enumerate}
 
-\subsection{class PackedEvent : public GenericRec}
+\hiddensubsection{class PackedEvent : public GenericRec}
 \begin{itemize}
 \item UInt\_t MTCInfo[kNheaders] (6 words for the event header from the MTC)
 \item UInt\_t RunID
@@ -164,12 +206,12 @@ This is a complete listing of all packed format classes, taken from RAT's Packed
 \item std::vector$<$PMTBundle$>$ PMTBundles
 \end{itemize}
 
-\subsection{class PMTBundle}
+\hiddensubsection{class PMTBundle}
 \begin{itemize}
 \item UInt\_t Word[3] 
 \end{itemize}
 
-\subsection{class EPED : public GenericRec}
+\hiddensubsection{class EPED : public GenericRec}
 \begin{itemize}
 \item UInt\_t GTDelayCoarse
 \item UInt\_t GTDelayFine
@@ -181,7 +223,7 @@ This is a complete listing of all packed format classes, taken from RAT's Packed
 \item UInt\_t RunID (doublecheck on the run)
 \end{itemize}
 
-\subsection{class TRIG : public GenericRec}
+\hiddensubsection{class TRIG : public GenericRec}
 \begin{itemize}
 \item UInt\_t TrigMask
 \item UShort\_t Threshold[10]
@@ -194,7 +236,7 @@ This is a complete listing of all packed format classes, taken from RAT's Packed
 \item UInt\_t RunID (doublecheck on the run)
 \end{itemize}
 
-\subsubsection{Array Indices}
+\hiddensubsubsection{Array Indices}
 Arrays correspond to:
 \begin{enumerate}
 \setcounter{enumi}{-1}
@@ -210,7 +252,7 @@ Arrays correspond to:
 \item OWLEHi
 \end{enumerate}
 
-\subsection{class RHDR : public GenericRec}
+\hiddensubsection{class RHDR : public GenericRec}
 \begin{itemize}
 \item UInt\_t Date
 \item UInt\_t Time
@@ -224,7 +266,7 @@ Arrays correspond to:
 \item UInt\_t RunID (doublecheck on the run)
 \end{itemize}
 
-\subsection{class CAST : public GenericRec}
+\hiddensubsection{class CAST : public GenericRec}
 \begin{itemize}
 \item UShort\_t SourceID
 \item UShort\_t SourceStat
@@ -242,7 +284,7 @@ Arrays correspond to:
 \item std::vector$<$float$>$ RopeErr
 \end{itemize}
 
-\subsection{class CAAC : public GenericRec}
+\hiddensubsection{class CAAC : public GenericRec}
 \begin{itemize}
 \item float AVPos[3]
 \item float AVRoll[3] (roll, pitch and yaw)

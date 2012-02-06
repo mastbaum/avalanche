@@ -20,7 +20,8 @@ if __name__ == '__main__':
 
     # connect client to a couchdb server at localhost:5984/dispatch
     doc_object_map = avalanche.ratdb.doc_to_record
-    client.add_db('http://localhost:5984', 'changes_perf', doc_object_map,username='mastbaum',password='pw123') # filter=dispatch/headers)
+    client.add_db('http://localhost:5984', 'dbname', doc_object_map,
+                  username='username', password='password')
 
     # receive RAT::DS::PackedRec objects
     while True:
