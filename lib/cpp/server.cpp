@@ -33,7 +33,10 @@ int server::sendObject(TObject* o) const {
 
     // send
     zmq::message_t message((void*)buffer, bufferSize, 0, 0);
-    socket->send(message);
+    bool rc = socket->send(message, 0);
+
+    if (!rc)
+        return 1;
 
     return 0;
 }
