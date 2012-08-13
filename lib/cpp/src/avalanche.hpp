@@ -6,43 +6,14 @@
 #include <map>
 #include <queue>
 #include <pthread.h>
-#include <zmq.hpp>
-#include <json/value.h>
 
 class TObject;
 
+namespace Json {
+    class Value;
+}
+
 namespace avalanche {
-
-    /** 
-     * An avalanche dispatcher server
-     *
-     * The server serializes ROOT TObjects and sends them out on a ZeroMQ
-     * publish socket, to which many clients may be subscribed
-     */
-    class server
-    {
-        public:
-            /**
-             * Create an avalanche server
-             * @param _addr The address to bind the server to
-             */
-            server(std::string _addr);
-
-            /** Destroy this server, closing any open connections */
-            ~server() {};
-
-            /**
-             * Send a TObject
-             * @param o A reference to the object to send. The caller maintains ownership.
-             * @return 0 if successful, 1 if unsuccessful
-             */
-            int sendObject(TObject* o) const;
-
-        protected:
-            std::string address;     //!< The local server address
-            zmq::context_t* context; //!< ZeroMQ context for the server socket
-            zmq::socket_t* socket;   //!< ZeroMQ server socket
-    };
 
     /**
      * A docObjectMap is a pointer to a function that turns a document from
@@ -56,16 +27,17 @@ namespace avalanche {
      * Container holding the state of a data stream
      * Used to pass state information to a stream's "watcher" thread
      */
-    struct streamState {
-        std::queue<TObject*>* queue;
-        pthread_mutex_t* queueMutex;
+    class streamState {
+        public:
+            std::queue<TObject*>* queue;
+            pthread_mutex_t* queueMutex;
     };
 
     /**
      * An avalanche data stream client
      *
-     * The client receives TObjects from both dispatcher streams (i.e.
-     * avalanche::servers) and from CouchDB databases, aggregating events from
+     * The client receives TObjects from both dispatcher streams (via
+     * libzdispatch) and from CouchDB databases, aggregating events from
      * the builder and headers in the database into one homogeneous stream.
      *
      * Clients may connect to unlimited numbers of dispatchers and databases,
@@ -86,8 +58,9 @@ namespace avalanche {
              * Connect to a dispatcher stream. This may be called repeatedly
              * to "watch" many streams with data interleaved.
              * @param _addr The address of the dispatcher server
+             * @param _records Optional dispatcher subscription string
              */
-            void addDispatcher(std::string _addr);
+            void addDispatcher(std::string _addr, std::string _records="w RECHDR w RAWDATA");
 
             /**
              * Connect to a CouchDB database, watching the changes feed for
@@ -95,7 +68,7 @@ namespace avalanche {
              * databases.
              * @param _host Hostname of the CouchDB server, optionally
              *              including login information like:
-             *              http://user:password@host:port/dbname
+             *              http://user:password@host:port
              * @param _dbname Name of the database to watch
              * @param _map A pointer to a function converting JSON to TObject
              *             @see docObjectMap
@@ -116,15 +89,15 @@ namespace avalanche {
              * @param blocking If true, wait until data is available to return
              * @return The next available TObject
              */
-            TObject* recv(bool blocking=false);
+            TObject* recv(bool blocking=true);
 
         protected:
-            std::queue<TObject*> queue;  //!< Buffer of received objects
+            std::queue<TObject*> queue; //!< Buffer of received objects
             pthread_mutex_t* queueMutex; //!< Mutex protection for queue
-            zmq::context_t* context;     //!< ZeroMQ context for dispatcher
-            zmq::socket_t* socket;       //!< ZeroMQ socket for dispatcher
+
             /** A map serving as a list of "watcher" threads and their state */
             std::map<pthread_t*, streamState*> threads;
+
             /**
              * A map with lists of connected streams
              * e.g. streams["dispatcher"] -> ["tcp://localhost:5024", ...]

@@ -2,7 +2,10 @@
 #define __AVALANCHE_RAT_H__
 
 #include <TObject.h>
-#include <RAT/DS/PackedEvent.hh>
+#include <RAT/DS/TRIGInfo.hh>
+#include <RAT/DS/EPEDInfo.hh>
+#include <RAT/DS/AVStat.hh>
+#include <RAT/DS/ManipStat.hh>
 
 #include "json/json.h"
 #include "json/value.h"
@@ -11,7 +14,7 @@ namespace avalanche {
 
     /**
      * Convert a header CouchDB document (in the form of a Json::Value) into a
-     * RAT::DS::PackedRec.
+     * RAT::DS TObject*.
      *
      * You should create a pointer to this function and pass it to
      * avalanche::client::addDB like so:
@@ -24,7 +27,7 @@ client.addDB("the url", "the database name", map);
      * Returns NULL if conversion fails.
      *
      * @param v A JSON document
-     * @return A TObject*, which is really a RAT::DS::PackedRec*
+     * @return A TObject* (cast to subclass type using IsA())
      */
     static TObject* docToRecord(Json::Value &v) {
         enum { RHDR=2, CAAC=3, CAST=4, TRIG=5, EPED=6 };

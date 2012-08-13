@@ -1,45 +1,32 @@
 #include <sstream>
-#include <zmq.hpp>
 #include <assert.h>
 #include <curl/curl.h>  
-#include <TBuffer.h>
-#include <TBufferFile.h>
+#include <zdab_convert.hpp>
+#include <zdab_dispatch.hpp>
 
-#include "json/json.h"
-#include "json/reader.h"
-#include "json/value.h"
+#include <json/json.h>
+#include <json/reader.h>
+#include <json/value.h>
 
-#include "avalanche.hpp"
-#include "stream.hpp"
+#include <avalanche.hpp>
+#include <stream.hpp>
 
 namespace avalanche {
 
     void* watchDispatcher(void* arg) {
         dispatcherState* s = (dispatcherState*) arg;
 
-        while(1) {
-            zmq::message_t message;
-
+        while(true) {
             try {
-                s->socket->recv(&message, s->flags);
-                if (message.size() == 0)
-                    continue;
-
-                // TBufferFile used for TObject serialization
-                TBufferFile bf(TBuffer::kRead, message.size(), message.data(), false);
-
-                // make a copy, since the buffer will disappear
-                TObject* o = (TObject*) bf.ReadObjectAny(TObject::Class());
+                TObject* o = s->dispatcher->next(); // blocks by default
 
                 pthread_mutex_lock(s->queueMutex);
                 s->queue->push(o);
                 pthread_mutex_unlock(s->queueMutex);
             }
-            catch (zmq::error_t &e) {
-                if (e.num() == EAGAIN) // no data in buffer
-                    return NULL;
-                else
-                    throw e;
+            catch (ratzdab::unknown_record_error& e) {
+                std::cerr << "Skipping record of unknown type" << std::endl;
+                return NULL;
             }
         }
 

@@ -5,13 +5,9 @@
 #include <queue>
 #include <pthread.h>
 
-#include "avalanche.hpp"
+#include <avalanche.hpp>
 
 class TObject;
-
-namespace zmq {
-    class socket_t;
-}
 
 namespace avalanche {
 
@@ -20,11 +16,14 @@ namespace avalanche {
      * Used to pass state information to a watchDispatcher thread
      * @see watchDispatcher()
      */
-    struct dispatcherState : public streamState {
-        std::queue<TObject*>* queue;
-        pthread_mutex_t* queueMutex;
-        zmq::socket_t* socket;
-        int flags;
+    class dispatcherState : public streamState {
+        public:
+            ~dispatcherState() {
+                delete dispatcher;
+            }
+            std::queue<TObject*>* queue;
+            pthread_mutex_t* queueMutex;
+            ratzdab::dispatch* dispatcher;
     };
 
     /**
@@ -32,20 +31,21 @@ namespace avalanche {
      * Used to pass state information to a watchDB thread
      * @see watchDB()
      */
-    struct dbState : public streamState {
-        std::queue<TObject*>* queue;
-        pthread_mutex_t* queueMutex;
-        std::string host;
-        std::string dbname;
-        docObjectMap map;
-        std::string filterName;
+    class dbState : public streamState {
+        public:
+            std::queue<TObject*>* queue;
+            pthread_mutex_t* queueMutex;
+            std::string host;
+            std::string dbname;
+            docObjectMap map;
+            std::string filterName;
     };
 
     /**
      * Watch a dispatcher stream
      *
-     * Listen to a ZeroMQ socket, deserialized TObjects and pushing them into a
-     * std::queue as they are received
+     * Listen to a ZDAB dispatcher, pushing ROOT objects into into a std::queue
+     * as they are received.
      *
      * All relevant parameters are passed in via the single argument, which is
      * really a dispatcherState struct. This is necessary because this function
