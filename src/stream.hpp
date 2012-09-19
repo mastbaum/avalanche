@@ -23,7 +23,7 @@ namespace avalanche {
             }
             std::queue<TObject*>* queue;
             pthread_mutex_t* queueMutex;
-            ratzdab::dispatch* dispatcher;
+            ratzdab::dispatch* dispatcher; //!< dispatcher to listen to
     };
 
     /**
@@ -35,10 +35,10 @@ namespace avalanche {
         public:
             std::queue<TObject*>* queue;
             pthread_mutex_t* queueMutex;
-            std::string host;
-            std::string dbname;
-            docObjectMap map;
-            std::string filterName;
+            std::string host; //!< hostname of couchdb server
+            std::string dbname; //!< name of couchdb database
+            docObjectMap map; //!< function to map json documents to TObjects
+            std::string filterName; //!< name of db changes filter function
     };
 
     /**

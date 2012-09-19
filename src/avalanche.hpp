@@ -13,13 +13,16 @@ namespace Json {
     class Value;
 }
 
+/**
+ * Namespace containing all of the avalanche library
+ */
 namespace avalanche {
 
     /**
      * A docObjectMap is a pointer to a function that turns a document from
      * CouchDB into a TObject. Such a function must be defined by the user and
      * specified for a new database connection.
-     * @see addDB()
+     * @see client::addDB()
      */
     typedef TObject* (*docObjectMap)(Json::Value&);
 
@@ -29,8 +32,8 @@ namespace avalanche {
      */
     class streamState {
         public:
-            std::queue<TObject*>* queue;
-            pthread_mutex_t* queueMutex;
+            std::queue<TObject*>* queue; //!< Queue where incoming data is held
+            pthread_mutex_t* queueMutex; //!< Lock protecting the queue
     };
 
     /**
@@ -70,10 +73,9 @@ namespace avalanche {
              *              including login information like:
              *              http://user:password@host:port
              * @param _dbname Name of the database to watch
-             * @param _map A pointer to a function converting JSON to TObject
-             *             @see docObjectMap
-             * @param _filter Name of the CouchDB filter function to apply to
-             *                the changes feed
+             * @param _map A pointer to a function converting JSON to TObject; see @ref docObjectMap
+             * @param _filterName Name of the CouchDB filter function to apply to
+             *                    the changes feed
              */
             void addDB(std::string _host, std::string _dbname, docObjectMap _map, std::string _filterName="");
 
