@@ -47,27 +47,33 @@ API Overview
 
 Example:
 
-    avalanche::client* client = new avalanche::client();
-    client->addDispatcher("tcp://localhost:7777");
-    client->addDB("http://localhost:5984", "mydb", doc_object_map);
+    avalanche::client client;
+    c.addDispatcher("localhost");
+    c.addDB("http://localhost:5984", "mydb", doc_object_map);
 
-This will connect to an avalanche server running on localhost port 7777 via TCP and the changes feed of a CouchDB database at `http://localhost:5984/mydb`.
+This will connect to a ZDAB dispatcher running on localhost and to the changes feed of a CouchDB database at `http://localhost:5984/mydb`.
 
 #### Talking to CouchDB ####
-The avalanche client always returns a `TObject`, so when connecting to a database you must give it a pointer to a function that will convert CouchDB documents. This is the `doc_object_map` in the above example.
+The avalanche client always returns a `TObject`, so when connecting to a database you must give it a functor that will convert CouchDB documents. This is the `doc_object_map` in the above example.
 
-This function must have a prototype like:
+The functor looks like this:
 
-    static TObject* myMapFunction(Json::Value& v);
-    
-For convenience, this pointer type is given a name in avalanche: `avalanche::docObjectMap`, so you can do this:
+    class myMap : public avalanche::docObjectMap {
+        public:
+            TObject* operator()(const Json::Value& v) {
+                // ... convert and return a TObject ...
+            }
+    };
 
-    avalanche::docObjectMap doc_object_map = &myMapFunction;
-    client->addDB("http://localhost:5984", "mydb", doc_object_map);
+Then, to use this to decode a changes feed:
 
-For SNO+ users, this mapping function is provided. Include `avalanche_rat.hpp` and use:
+    myMap map;
+    client.addDB("http://localhost:5984", "mydb", map);
 
-    avalanche::docObjectMap doc_object_map = &(avalanche::docToRecord);
+For SNO+ users, the mapping function is provided. Include `avalanche_rat.hpp` and use:
+
+    avalanche::ratDocObjectMap map;
+    client.addDB("http://localhost:5984", "mydb", map);
 
 ### Receiving Objects ###
 
@@ -75,7 +81,13 @@ For SNO+ users, this mapping function is provided. Include `avalanche_rat.hpp` a
 
 Example:
 
-    TH1F* h = (TH1F*) client->recv();
+    TObject* o = client->recv();
+    if (o->IsA()->Class() == TH1F::Class()) {
+        TH1F* h = dynamic_cast<TH1F*>(o);
+        std::cout << "Mean: " << h->GetMean() << std::endl;
+    }
 
-By default, recvObject is non-blocking; `blocking=true` will cause recv() to wait until data is available before returning. Note that `recv` returns a `TObject*`, which must be cast appropriately, likely using `TObject::IsA()`.
+By default, recvObject is non-blocking; `blocking=true` will cause recv() to wait until data is available before returning.
+
+`recv` always returns a `TObject*`, which must be cast appropriately, likely using `TObject::IsA()`.
 
