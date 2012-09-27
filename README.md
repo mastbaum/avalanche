@@ -23,11 +23,19 @@ HTML output is located at `doc/html/index.html`.
 
 Building
 --------
-To build the `libavalanche`, run
+To build the default, RAT-enabled `libavalanche`, you will need a few things in your environment:
+
+    $RATZDAB_ROOT  Path to ratzdab (rat-tools/ratzdab)
+    $ROOTSYS       Path to ROOT installation
+    $RATROOT       Path to RAT installation
+    
+With these set, just run
 
     make
+    
+This will create a shared library `libavalanche.so` which you may link into your application, as well as the ROOT library `avalanche_rat.so`.
 
-This will create a shared library `libavalanche.so` which you may link into your application.
+**If you wish to disable the RAT features (namely the built-in RAT-ification of CouchDB changes), ignore `$RATROOT` and run `make norat`. This produces `libavalanche.so` and `avalanche_root.so`.**
 
 Source Code
 -----------
