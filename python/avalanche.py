@@ -11,8 +11,19 @@ Provides:
         CouchDB changes for insertion into the data stream.
 
     `avalanche.docObjectMap`:
-        A generic functor for converting JSON to TObjects. Create one (in C++)
-        to listen for record types not handled by `ratDocObjectMap`.
+        Abstract base functor for converting JSON to TObjects. Create one (in
+        C++) to listen for record types not handled by `ratDocObjectMap`.
+
+Example Usage:
+
+    import avalanche
+
+    c = avalanche.client()
+    map = avalanche.ratDocObjectMap()
+    c.addDB('http://localhost:5984', 'dbname', map)
+
+    o = c.recv()
+
 '''
 
 from os.path import abspath, dirname, join
