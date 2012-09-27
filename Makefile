@@ -27,9 +27,9 @@ DICT_SRCS = http.hpp stream.hpp avalanche.hpp
 
 SRCS = src/client.cpp src/stream.cpp contrib/json/json_reader.cpp contrib/json/json_writer.cpp contrib/json/json_value.cpp
 
-all: libavalanche.so rootlib
+all: libavalanche.so rootlib rootlib_rat
 
-rat: all rootlib_rat
+norat: libavalanche.so rootlib
 
 rootlib:
 	test -d build || mkdir build
