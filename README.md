@@ -87,7 +87,7 @@ Example:
         std::cout << "Mean: " << h->GetMean() << std::endl;
     }
 
-By default, recvObject is non-blocking; `blocking=true` will cause recv() to wait until data is available before returning.
+By default, `recv` is non-blocking; `blocking=true` will cause it to wait until data is available before returning.
 
 `recv` always returns a `TObject*`, which must be cast appropriately, likely using `TObject::IsA()`.
 
