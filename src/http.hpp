@@ -15,7 +15,7 @@ namespace avalanche {
      *  HTTP or HTTPS server to download files.  File contents are returned as
      *  std::string objects.
      *
-     *  Adapted slightly from the original by Stan Seibert <sseibert@lanl.gov>
+     *  Adapted slightly from the original by Stan Seibert <stan@mtrr.org>
      */
     class httpDownloader {
         public:

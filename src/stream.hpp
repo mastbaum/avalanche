@@ -4,6 +4,7 @@
 #include <string>
 #include <queue>
 #include <pthread.h>
+#include <zdab_dispatch.hpp>
 
 #include <avalanche.hpp>
 
@@ -21,8 +22,6 @@ namespace avalanche {
             ~dispatcherState() {
                 delete dispatcher;
             }
-            std::queue<TObject*>* queue;
-            pthread_mutex_t* queueMutex;
             ratzdab::dispatch* dispatcher; //!< dispatcher to listen to
     };
 
@@ -33,11 +32,9 @@ namespace avalanche {
      */
     class dbState : public streamState {
         public:
-            std::queue<TObject*>* queue;
-            pthread_mutex_t* queueMutex;
             std::string host; //!< hostname of couchdb server
             std::string dbname; //!< name of couchdb database
-            docObjectMap map; //!< function to map json documents to TObjects
+            docObjectMap* map; //!< functor to map json documents to TObjects
             std::string filterName; //!< name of db changes filter function
     };
 

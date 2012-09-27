@@ -97,7 +97,7 @@ namespace avalanche {
             reader.parse(doc.str(), v, false);
 
             if (v.isObject()) {
-                TObject* o = (*(s->map))(v["doc"]);
+                TObject* o = (*s->map)(v["doc"]);
                 if (o) {
                     pthread_mutex_lock(s->queueMutex);
                     s->queue->push(o);

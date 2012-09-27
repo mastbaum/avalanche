@@ -9,6 +9,11 @@
 
 class TObject;
 
+#ifdef __MAKECINT__
+#define pthread_t void
+#define pthread_mutex_t void
+#endif
+
 namespace Json {
     class Value;
 }
@@ -19,12 +24,15 @@ namespace Json {
 namespace avalanche {
 
     /**
-     * A docObjectMap is a pointer to a function that turns a document from
-     * CouchDB into a TObject. Such a function must be defined by the user and
-     * specified for a new database connection.
+     * Functor that turns a document from CouchDB into a TObject. An instance
+     * must be specified for a new database connection.
      * @see client::addDB()
      */
-    typedef TObject* (*docObjectMap)(Json::Value&);
+    class docObjectMap {
+        public:
+            /** Convert JSON data to a TObject* */
+            virtual TObject* operator()(const Json::Value& v) = 0;
+    };
 
     /**
      * Container holding the state of a data stream
@@ -73,18 +81,18 @@ namespace avalanche {
              *              including login information like:
              *              http://user:password@host:port
              * @param _dbname Name of the database to watch
-             * @param _map A pointer to a function converting JSON to TObject; see @ref docObjectMap
+             * @param _map A functor converting JSON to TObjects; see @ref docObjectMap
              * @param _filterName Name of the CouchDB filter function to apply to
              *                    the changes feed
              */
-            void addDB(std::string _host, std::string _dbname, docObjectMap _map, std::string _filterName="");
+            void addDB(std::string _host, std::string _dbname, docObjectMap& _map, std::string _filterName="");
 
             /**
              * Get the lists of connected dispatchers and databases
              * @return A map (keys "dispatcher", "couchdb") of lists of
              *         connection identifier strings
              */
-            std::map<std::string, std::vector<std::string> > getStreamList();
+            const std::map<std::string, std::vector<std::string> > getStreamList() { return streams; }
 
             /**
              * Receive the next available record

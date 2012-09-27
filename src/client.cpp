@@ -51,7 +51,7 @@ namespace avalanche {
         threads[thread] = s;
     }
 
-    void client::addDB(std::string _host, std::string _dbname, docObjectMap _map, std::string _filterName) {
+    void client::addDB(std::string _host, std::string _dbname, docObjectMap& _map, std::string _filterName) {
         streams["couchdb"].push_back(_host + "/" + _dbname);
 
         // launch couchdb-watching thread with given state
@@ -60,7 +60,7 @@ namespace avalanche {
         s->queueMutex = queueMutex;
         s->host = _host;
         s->dbname = _dbname;
-        s->map = _map;
+        s->map = &_map;
         s->filterName = _filterName;
 
         pthread_t* thread = new pthread_t;
@@ -78,7 +78,7 @@ namespace avalanche {
         }
         else {
             pthread_mutex_lock(queueMutex);
-            TObject* o = queue.front()->Clone();
+            TObject* o = (queue.front())->Clone();
             queue.pop();
             pthread_mutex_unlock(queueMutex);
             return o;

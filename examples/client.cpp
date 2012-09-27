@@ -1,6 +1,5 @@
 #include <iostream>
-#include <TH1F.h>
-#include <RAT/DS/PackedEvent.hh>
+#include <RAT/DS/Root.hh>
 #include <avalanche.hpp>
 #include <avalanche_rat.hpp>
 
@@ -8,27 +7,26 @@ int main(int argc, char* argv[]) {
     // create a client
     avalanche::client client;
 
-    // connect to a few dispatchers
-    client.addDispatcher("tcp://localhost:5025");
-    client.addDispatcher("tcp://localhost:5024");
+    // connect to a dispatcher
+    client.addDispatcher("localhost");
 
     // connect to couchdb
-    avalanche::docObjectMap map = &(avalanche::docToRecord);
-    client.addDB("http://username:password@localhost:5984", "db_name", map);
+    avalanche::ratDocObjectMap map;
+    client.addDB("http://localhost:5984", "asdf", map);
 
-    // receive RAT::DS::PackedRec objects
+    // receive RAT::DS TObjects
+    std::cout << "Listening..." << std::endl;
     while (1) {
-        RAT::DS::PackedRec* rec = (RAT::DS::PackedRec*) client.recv();
-        if (rec) {
-            std::cout << "Received PackedRec of type " << rec->RecordType << std::endl;
-            if (rec->RecordType == 1) {
-                RAT::DS::PackedEvent* event = dynamic_cast<RAT::DS::PackedEvent*> (rec->Rec);
-                std::cout << " NHIT = " << event->NHits << std::endl;
+        TObject* o = client.recv();
+        if (o) {
+            std::cout << "Received TObject of type " << o->IsA()->GetName() << std::endl;
+            if (o->IsA() == RAT::DS::Root::Class()) {
+                RAT::DS::Root* ds = dynamic_cast<RAT::DS::Root*>(o);
+                std::cout << " NHIT = " << ds->GetEV(0)->GetNhits() << std::endl;
             }
         }
-        else
-            continue;
-        delete rec;
+
+        delete o;
     }
 
     return 0;  

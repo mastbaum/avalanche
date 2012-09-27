@@ -20,7 +20,7 @@ namespace avalanche {
     /**
      *  Callback function for curl
      */
-    static size_t curl_write_func(void *ptr, size_t size, size_t nmemb, void *stream) {
+    static size_t curl_write_func(void* ptr, size_t size, size_t nmemb, void* stream) {
         std::ostringstream* doc = static_cast<std::ostringstream*>(stream);
         char* data = static_cast<char*>(ptr);
 
