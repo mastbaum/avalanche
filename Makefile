@@ -13,6 +13,8 @@ else
     INCDIR += -I$(ROOTSYS)/include
 endif
 
+INCDIR += $(shell curl-config --cflags)
+
 UNAME := $(shell uname)
 ifeq ($(UNAME), Darwin)
     LDFLAGS += -L$(shell root-config --libdir) -dynamiclib #-install_name /usr/local/lib/$(@F).so #-undefined dynamic_lookup
@@ -20,6 +22,8 @@ endif
 ifeq ($(UNAME), Linux)
     LDFLAGS += -L$(ROOTSYS)/lib -rdynamic
 endif
+
+LDFLAGS += $(shell curl-config --libs)
 
 LIBS = -lzdispatch -lpthread -lcurl -ldl $(shell root-config --libs)
 
